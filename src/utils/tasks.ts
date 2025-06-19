@@ -1,291 +1,154 @@
-import { supabase } from '../lib/supabase';
+import { request } from '../lib/apiClient';
 
-// Mock data for development
-const mockTasks: Task[] = [
-  {
-    id: 'j9k0l1m2-n3o4-5p6q-7r8s-t9u0v1w2x3y4',
-    propertyId: '3c6c8353-2122-4e63-b63b-c9bdcb6b94a3',
-    title: 'Review Q2 budget proposals',
-    description: 'Review and approve department budget proposals for Q2',
-    assignee: 'u1s2e3r4-i5d6-7h8e9-r0e1-2i3s4h5e6r7e',
-    dueDate: '2024-05-15',
-    priority: 'high',
-    status: 'in_progress',
-    createdAt: '2024-04-01T10:30:00Z',
-    createdBy: 'u1s2e3r4-i5d6-7h8e9-r0e1-2i3s4h5e6r7e',
-    updatedAt: '2024-04-05T14:45:00Z'
-  },
-  {
-    id: 'k0l1m2n3-o4p5-6q7r-8s9t-u0v1w2x3y4z5',
-    propertyId: '3c6c8353-2122-4e63-b63b-c9bdcb6b94a3',
-    title: 'Prepare staff training schedule',
-    description: 'Create training schedule for new front desk staff',
-    assignee: 'u1s2e3r4-i5d6-7h8e9-r0e1-2i3s4h5e6r7e',
-    dueDate: '2024-04-20',
-    priority: 'medium',
-    status: 'todo',
-    createdAt: '2024-04-02T09:15:00Z',
-    createdBy: 'u1s2e3r4-i5d6-7h8e9-r0e1-2i3s4h5e6r7e',
-    updatedAt: '2024-04-02T09:15:00Z'
-  },
-  {
-    id: 'l1m2n3o4-p5q6-7r8s-9t0u-v1w2x3y4z5a6',
-    propertyId: 'f8d7a9e5-b8c2-4b3a-9f4e-d5c6b7a8f9e0',
-    title: 'Update vendor contracts',
-    description: 'Review and update contracts with key suppliers',
-    assignee: 'u1s2e3r4-i5d6-7h8e9-r0e1-2i3s4h5e6r7e',
-    dueDate: '2024-04-30',
-    priority: 'high',
-    status: 'todo',
-    createdAt: '2024-04-03T11:45:00Z',
-    createdBy: 'u1s2e3r4-i5d6-7h8e9-r0e1-2i3s4h5e6r7e',
-    updatedAt: '2024-04-03T11:45:00Z'
-  }
-];
+// Align with backend schema: ('todo', 'in_progress', 'review', 'done', 'blocked', 'cancelled')
+// And priority: ('low', 'medium', 'high', 'critical')
+type TaskStatus = 'todo' | 'in_progress' | 'review' | 'done' | 'blocked' | 'cancelled';
+type TaskPriority = 'low' | 'medium' | 'high' | 'critical';
 
 export interface TaskUpdate {
   title?: string;
   description?: string;
-  assignee?: string;
+  assignee?: string; // Should be assignee_user_id
   dueDate?: string;
-  priority?: 'low' | 'medium' | 'high';
-  status?: 'todo' | 'in_progress' | 'review' | 'done';
+  priority?: TaskPriority;
+  status?: TaskStatus;
+  propertyId?: string; // If task can be moved between properties
+  relatedEntityType?: string;
+  relatedEntityId?: string;
 }
 
 export interface Task {
   id: string;
-  propertyId: string;
+  propertyId?: string; // Optional if task can be non-property specific
   title: string;
   description?: string;
-  assignee?: string;
-  dueDate: string;
-  priority: 'low' | 'medium' | 'high';
-  status: 'todo' | 'in_progress' | 'review' | 'done';
+  assignee?: string; // User ID (assignee_user_id from backend)
+  dueDate?: string; // Optional to align with schema
+  priority: TaskPriority;
+  status: TaskStatus;
+  relatedEntityType?: string | null;
+  relatedEntityId?: string | null;
   createdAt: string;
-  createdBy: string;
-  updatedAt: string;
-  updatedBy?: string;
+  createdBy?: string; // User ID
+  updatedAt?: string;
+  updatedBy?: string; // User ID
 }
 
+// Helper to map backend data to frontend Task type
+const mapToFrontendTask = (data: any): Task => {
+  return {
+    id: data.id,
+    propertyId: data.property_id,
+    title: data.title,
+    description: data.description,
+    assignee: data.assignee_user_id, // Map from assignee_user_id
+    dueDate: data.due_date,
+    priority: data.priority as TaskPriority,
+    status: data.status as TaskStatus,
+    relatedEntityType: data.related_entity_type,
+    relatedEntityId: data.related_entity_id,
+    createdAt: data.created_at,
+    createdBy: data.created_by,
+    updatedAt: data.updated_at,
+    updatedBy: data.updated_by,
+  };
+};
+
+// Helper to map frontend Task data (for create/update) to backend payload
+const mapToBackendTaskPayload = (
+  taskData: Partial<TaskUpdate> | Omit<Task, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>
+): any => {
+  const payload: any = {};
+  if (taskData.title !== undefined) payload.title = taskData.title;
+  if (taskData.description !== undefined) payload.description = taskData.description;
+  if (taskData.propertyId !== undefined) payload.property_id = taskData.propertyId;
+  if (taskData.assignee !== undefined) payload.assignee_user_id = taskData.assignee;
+  if (taskData.dueDate !== undefined) payload.due_date = taskData.dueDate;
+  if (taskData.priority !== undefined) payload.priority = taskData.priority;
+  if (taskData.status !== undefined) payload.status = taskData.status;
+  if (taskData.relatedEntityType !== undefined) payload.related_entity_type = taskData.relatedEntityType;
+  if (taskData.relatedEntityId !== undefined) payload.related_entity_id = taskData.relatedEntityId;
+  // created_by, updated_by are handled by backend
+  return payload;
+};
+
 export const loadTasks = async (
-  propertyId: string,
-  status?: 'todo' | 'in_progress' | 'review' | 'done'
+  propertyId?: string, // Optional
+  status?: TaskStatus
 ): Promise<Task[]> => {
+  // TODO: Define backend API: GET /api/tasks?propertyId=X&status=Y
+  let endpoint = '/api/tasks';
+  const params = new URLSearchParams();
+  if (propertyId) params.append('propertyId', propertyId);
+  if (status) params.append('status', status);
+  const queryString = params.toString();
+  if (queryString) endpoint += `?${queryString}`;
+
   try {
-    // In development mode, return mock data
-    if (import.meta.env.DEV) {
-      let filteredTasks = mockTasks.filter(task => task.propertyId === propertyId);
-      
-      if (status) {
-        filteredTasks = filteredTasks.filter(task => task.status === status);
-      }
-      
-      return filteredTasks;
-    }
-    
-    // In production, fetch from Supabase
-    let query = supabase
-      .from('tasks')
-      .select('*')
-      .eq('property_id', propertyId);
-  
-    if (status) {
-      query = query.eq('status', status);
-    }
-  
-    const { data, error } = await query.order('created_at', { ascending: false });
-  
-    if (error) {
-      console.error('Error loading tasks:', error);
-      return [];
-    }
-  
-    return data.map(row => ({
-      id: row.id,
-      propertyId: row.property_id,
-      title: row.title,
-      description: row.description,
-      assignee: row.assignee,
-      dueDate: row.due_date,
-      priority: row.priority,
-      status: row.status,
-      createdAt: row.created_at,
-      createdBy: row.created_by,
-      updatedAt: row.updated_at,
-      updatedBy: row.updated_by
-    }));
+    const data = await request<any[]>(endpoint, { method: 'GET' }); // Replace any[] with BackendTask[]
+    return data.map(mapToFrontendTask);
   } catch (error) {
-    console.error('Error loading tasks:', error);
+    console.error('Error loading tasks via API:', error);
     return [];
   }
 };
 
 export const createTask = async (
-  task: Omit<Task, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>
+  // Ensure 'priority' and 'status' are provided, or have defaults if not in Omit
+  taskData: Omit<Task, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>
 ): Promise<Task | null> => {
+  // TODO: Define backend API: POST /api/tasks
+  // Backend sets id, created_by, created_at, updated_at
   try {
-    // In development mode, return mock data
-    if (import.meta.env.DEV) {
-      const newTask: Task = {
-        ...task,
-        id: crypto.randomUUID(),
-        createdAt: new Date().toISOString(),
-        createdBy: 'u1s2e3r4-i5d6-7h8e9-r0e1-2i3s4h5e6r7e',
-        updatedAt: new Date().toISOString()
-      };
-      
-      mockTasks.push(newTask);
-      return newTask;
-    }
-    
-    // In production, insert into Supabase
-    const { data, error } = await supabase
-      .from('tasks')
-      .insert([{
-        property_id: task.propertyId,
-        title: task.title,
-        description: task.description,
-        assignee: task.assignee,
-        due_date: task.dueDate,
-        priority: task.priority,
-        status: task.status,
-        created_by: (await supabase.auth.getUser()).data.user?.id
-      }])
-      .select()
-      .single();
-  
-    if (error) {
-      console.error('Error creating task:', error);
-      return null;
-    }
-  
-    return {
-      id: data.id,
-      propertyId: data.property_id,
-      title: data.title,
-      description: data.description,
-      assignee: data.assignee,
-      dueDate: data.due_date,
-      priority: data.priority,
-      status: data.status,
-      createdAt: data.created_at,
-      createdBy: data.created_by,
-      updatedAt: data.updated_at,
-      updatedBy: data.updated_by
-    };
+    const payload = mapToBackendTaskPayload(taskData);
+    const data = await request<any>('/api/tasks', { // Replace any with BackendTask
+      method: 'POST',
+      body: payload,
+    });
+    return mapToFrontendTask(data);
   } catch (error) {
-    console.error('Error creating task:', error);
+    console.error('Error creating task via API:', error);
     return null;
   }
 };
 
+// updateTaskStatus can be a specific variant of updateTask
 export const updateTaskStatus = async (
   taskId: string,
-  status: 'todo' | 'in_progress' | 'review' | 'done'
-): Promise<boolean> => {
-  try {
-    // In development mode, update mock data
-    if (import.meta.env.DEV) {
-      const taskIndex = mockTasks.findIndex(task => task.id === taskId);
-      if (taskIndex !== -1) {
-        mockTasks[taskIndex].status = status;
-        mockTasks[taskIndex].updatedAt = new Date().toISOString();
-        return true;
-      }
-      return false;
-    }
-    
-    // In production, update in Supabase
-    const { error } = await supabase
-      .from('tasks')
-      .update({ 
-        status,
-        updated_at: new Date().toISOString(),
-        updated_by: (await supabase.auth.getUser()).data.user?.id
-      })
-      .eq('id', taskId);
-  
-    if (error) {
-      console.error('Error updating task status:', error);
-      return false;
-    }
-  
-    return true;
-  } catch (error) {
-    console.error('Error updating task status:', error);
-    return false;
-  }
+  status: TaskStatus
+): Promise<Task | null> => {
+  // This will call the general updateTask function
+  return updateTask(taskId, { status });
 };
 
 export const updateTask = async (
   id: string,
   updates: TaskUpdate
-): Promise<boolean> => {
+): Promise<Task | null> => {
+  // TODO: Define backend API: PATCH /api/tasks/:id
+  // Backend sets updated_by, updated_at
   try {
-    // In development mode, update mock data
-    if (import.meta.env.DEV) {
-      const taskIndex = mockTasks.findIndex(task => task.id === id);
-      if (taskIndex !== -1) {
-        mockTasks[taskIndex] = {
-          ...mockTasks[taskIndex],
-          ...updates,
-          updatedAt: new Date().toISOString()
-        };
-        return true;
-      }
-      return false;
-    }
-
-    // In production, update in Supabase
-    const { error } = await supabase
-      .from('tasks')
-      .update({
-        title: updates.title,
-        description: updates.description,
-        assignee: updates.assignee,
-        due_date: updates.dueDate,
-        priority: updates.priority,
-        status: updates.status,
-        updated_at: new Date().toISOString(),
-        updated_by: (await supabase.auth.getUser()).data.user?.id
-      })
-      .eq('id', id);
-
-    if (error) {
-      console.error('Error updating task:', error);
-      return false;
-    }
-
-    return true;
+    const payload = mapToBackendTaskPayload(updates);
+    const data = await request<any>(`/api/tasks/${id}`, { // Replace any with BackendTask
+      method: 'PATCH',
+      body: payload,
+    });
+    return mapToFrontendTask(data);
   } catch (error) {
-    console.error('Error updating task:', error);
-    return false;
+    console.error(`Error updating task ${id} via API:`, error);
+    return null; // Or throw error
   }
 };
 
 export const deleteTask = async (id: string): Promise<boolean> => {
+  // TODO: Define backend API: DELETE /api/tasks/:id
   try {
-    // In development mode, update mock data
-    if (import.meta.env.DEV) {
-      const initialLength = mockTasks.length;
-      mockTasks = mockTasks.filter(task => task.id !== id);
-      return mockTasks.length < initialLength;
-    }
-    
-    // In production, delete from Supabase
-    const { error } = await supabase
-      .from('tasks')
-      .delete()
-      .eq('id', id);
-  
-    if (error) {
-      console.error('Error deleting task:', error);
-      return false;
-    }
-  
+    await request<void>(`/api/tasks/${id}`, { method: 'DELETE' });
     return true;
   } catch (error) {
-    console.error('Error deleting task:', error);
+    console.error(`Error deleting task ${id} via API:`, error);
     return false;
   }
 };
+
+// TODO: Add getTaskById(id: string) if needed

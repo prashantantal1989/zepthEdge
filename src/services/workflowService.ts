@@ -1,292 +1,216 @@
-import { WorkflowTemplate } from '../types/settings';
-import { supabase } from '../lib/supabase';
-import { loadWorkflowTemplates } from '../utils/workflowTemplates';
-import { createWorkflowTemplate, updateWorkflowTemplate, deleteWorkflowTemplate } from '../utils/workflowTemplates';
+import { request } from '../lib/apiClient';
+import {
+  WorkflowTemplate,
+  WorkflowInstance,
+  // WorkflowStep, // Step structure is mostly handled by backend or part of WorkflowInstance.steps_data
+  EntityType,
+  // WorkflowStatus // Status strings like 'active', 'completed' are used directly
+} from '../types/workflow'; // Adjusted path if types/workflow.ts is the correct location
+// import { WorkflowTemplate as SettingsWorkflowTemplate } from '../types/settings'; // If WorkflowTemplate from settings is different
 
-/**
- * Workflow Service
- * 
- * This service provides methods for managing workflow templates in the application.
- */
+// Base shapes for what the backend API might return/accept.
+// These should align with your backend's DTOs or database models.
+
+interface BackendWorkflowTemplate {
+  id: string;
+  name: string;
+  description?: string;
+  category?: string;
+  steps: any[]; // Define step structure if needed, e.g., { name: string; approver_role: string; ... }
+  created_at?: string;
+  updated_at?: string;
+  created_by?: string; // Assuming UUID string
+  updated_by?: string; // Assuming UUID string
+}
+
+interface BackendWorkflowInstance {
+  id: string;
+  template_id: string;
+  entity_type: EntityType;
+  entity_id: string;
+  status: string; // e.g., 'active', 'completed', 'rejected'
+  current_step: number;
+  steps_data: any[]; // Array of step objects with their current states
+  created_at?: string;
+  updated_at?: string;
+  created_by?: string; // Assuming UUID string
+  updated_by?: string; // Assuming UUID string
+}
+
+// Helper to map backend template to frontend template if needed
+// For now, assuming types are largely compatible or frontend type will be adjusted.
+// The frontend WorkflowTemplate from types/workflow.ts might have `createdAt` instead of `created_at`.
+const mapToFrontendTemplate = (bt: BackendWorkflowTemplate): WorkflowTemplate => ({
+  id: bt.id,
+  name: bt.name,
+  description: bt.description || '',
+  category: bt.category || '',
+  steps: bt.steps,
+  // Mapping audit fields if they exist on Frontend type
+  createdAt: bt.created_at || new Date().toISOString(),
+  updatedAt: bt.updated_at || new Date().toISOString(),
+  // createdBy and updatedBy might be user objects or just IDs on the frontend type
+  // For now, assuming they are not complex objects on WorkflowTemplate type
+});
+
+const mapToFrontendInstance = (bi: BackendWorkflowInstance): WorkflowInstance => ({
+  id: bi.id,
+  templateId: bi.template_id,
+  entityType: bi.entity_type,
+  entityId: bi.entity_id,
+  status: bi.status,
+  currentStep: bi.current_step,
+  steps: bi.steps_data, // Assuming frontend type uses 'steps' for 'steps_data'
+  // Mapping audit fields
+  createdAt: bi.created_at || new Date().toISOString(),
+  updatedAt: bi.updated_at || new Date().toISOString(),
+  // createdBy/updatedBy if needed on frontend type
+});
+
+
 export class WorkflowService {
-  /**
-   * Get all workflow templates
-   */
+  // Workflow Template Methods
   static async getAllTemplates(): Promise<WorkflowTemplate[]> {
-    return loadWorkflowTemplates();
+    try {
+      const data = await request<BackendWorkflowTemplate[]>('/api/workflow-templates', { method: 'GET' });
+      return data.map(mapToFrontendTemplate);
+    } catch (error) {
+      console.error('Error fetching workflow templates:', error);
+      throw error;
+    }
   }
 
-  /**
-   * Create a new workflow template
-   */
-  static async createTemplate(
-    template: Omit<WorkflowTemplate, 'id'>
-  ): Promise<WorkflowTemplate | null> {
-    return createWorkflowTemplate(template);
-  }
-
-  /**
-   * Update a workflow template
-   */
-  static async updateTemplate(
-    id: string,
-    template: Omit<WorkflowTemplate, 'id'>
-  ): Promise<boolean> {
-    return updateWorkflowTemplate(id, template);
-  }
-
-  /**
-   * Delete a workflow template
-   */
-  static async deleteTemplate(id: string): Promise<boolean> {
-    return deleteWorkflowTemplate(id);
-  }
-
-  /**
-   * Get a workflow template by ID
-   */
   static async getTemplateById(id: string): Promise<WorkflowTemplate | null> {
-    const templates = await loadWorkflowTemplates();
-    return templates.find(t => t.id === id) || null;
+    try {
+      const data = await request<BackendWorkflowTemplate>(`/api/workflow-templates/${id}`, { method: 'GET' });
+      if (!data) return null;
+      return mapToFrontendTemplate(data);
+    } catch (error: any) {
+      if (error.status === 404) return null;
+      console.error(`Error fetching workflow template by ID ${id}:`, error);
+      throw error;
+    }
   }
 
-  /**
-   * Create a workflow instance from a template
-   */
+  static async createTemplate(
+    templateData: Omit<WorkflowTemplate, 'id' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'>
+  ): Promise<WorkflowTemplate> { // Return type is frontend type
+    try {
+      const payload = { // This is what backend POST /api/workflow-templates expects
+        name: templateData.name,
+        description: templateData.description,
+        category: templateData.category,
+        steps: templateData.steps,
+      };
+      const data = await request<BackendWorkflowTemplate>('/api/workflow-templates', {
+        method: 'POST',
+        body: payload,
+      });
+      return mapToFrontendTemplate(data);
+    } catch (error) {
+      console.error('Error creating workflow template:', error);
+      throw error;
+    }
+  }
+
+  static async updateTemplate(id: string, templateData: Partial<Omit<WorkflowTemplate, 'id' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'>>): Promise<WorkflowTemplate> {
+     try {
+      const payload = {
+        name: templateData.name,
+        description: templateData.description,
+        category: templateData.category,
+        steps: templateData.steps,
+      };
+      const data = await request<BackendWorkflowTemplate>(`/api/workflow-templates/${id}`, {
+        method: 'PUT',
+        body: payload,
+      });
+      return mapToFrontendTemplate(data);
+    } catch (error) {
+      console.error(`Error updating workflow template ${id}:`, error);
+      throw error;
+    }
+  }
+
+  static async deleteTemplate(id: string): Promise<void> {
+    try {
+      await request<void>(`/api/workflow-templates/${id}`, { method: 'DELETE' });
+    } catch (error) {
+      console.error(`Error deleting workflow template ${id}:`, error);
+      throw error;
+    }
+  }
+
+  // Workflow Instance Methods
   static async createWorkflowInstance(
     templateId: string,
-    entityType: string,
-    entityId: string
-  ): Promise<string | null> {
-    // In development mode, return a mock workflow ID
-    if (import.meta.env.DEV) {
-      return crypto.randomUUID();
-    }
-    
-    try {
-      // Get the template to copy its steps
-      const template = await this.getTemplateById(templateId);
-      if (!template) {
-        throw new Error(`Template with ID ${templateId} not found`);
-      }
-      
-      // Initialize steps_data with steps from the template
-      const stepsData = template.steps.map(step => ({
-        ...step,
-        status: 'waiting',
-        updated_at: null,
-        updated_by: null,
-        comment: null
-      }));
-      
-      // Set the first step to pending
-      if (stepsData.length > 0) {
-        stepsData[0].status = 'pending';
-      }
-      
-      // Create workflow instance in Supabase
-      const { data, error } = await supabase
-        .from('workflows')
-        .insert([{
-          template_id: templateId,
-          entity_type: entityType,
-          entity_id: entityId,
-          status: 'active',
-          current_step: 0,
-          steps_data: stepsData
-        }])
-        .select()
-        .single();
-
-      if (error) {
-        console.error('Error creating workflow instance:', error);
-        return null;
-      }
-
-      return data.id;
-    } catch (error) {
-      console.error('Error in createWorkflowInstance:', error);
-      return null;
-    }
-  }
-
-  /**
-   * Update a workflow step
-   */
-  static async updateWorkflowStep(
-    workflowId: string,
-    stepIndex: number,
-    status: 'pending' | 'approved' | 'rejected',
-    comment?: string
-  ): Promise<boolean> {
-    try {
-      // Get the workflow
-      const { data: workflow, error: getError } = await supabase
-        .from('workflows')
-        .select('*')
-        .eq('id', workflowId)
-        .single();
-
-      if (getError) {
-        console.error('Error getting workflow:', getError);
-        return false;
-      }
-
-      // Update the workflow step
-      const stepsData = workflow.steps_data as any[];
-      if (stepIndex >= 0 && stepIndex < stepsData.length) {
-        stepsData[stepIndex].status = status;
-        stepsData[stepIndex].updated_at = new Date().toISOString();
-        stepsData[stepIndex].updated_by = (await supabase.auth.getUser()).data.user?.id;
-        
-        if (comment) {
-          stepsData[stepIndex].comment = comment;
-        }
-
-        // Determine the new workflow status and current step
-        let newStatus = workflow.status;
-        let newCurrentStep = workflow.current_step;
-        
-        if (status === 'approved') {
-          // Move to the next step if available
-          if (stepIndex + 1 < stepsData.length) {
-            newCurrentStep = stepIndex + 1;
-            stepsData[stepIndex + 1].status = 'pending';
-          } else {
-            // All steps approved, mark workflow as completed
-            newStatus = 'completed';
-          }
-        } else if (status === 'rejected') {
-          // Workflow is rejected
-          newStatus = 'rejected';
-        }
-
-        // Update the entity status based on workflow status
-        await this.updateEntityStatus(workflow.entity_type, workflow.entity_id, 
-          newStatus === 'completed' ? 'approved' : 
-          newStatus === 'rejected' ? 'rejected' : 'pending');
-
-        // Update the workflow
-        const { error: updateError } = await supabase
-          .from('workflows')
-          .update({
-            steps_data: stepsData,
-            current_step: newCurrentStep,
-            status: newStatus,
-            updated_at: new Date().toISOString(),
-            updated_by: (await supabase.auth.getUser()).data.user?.id
-          })
-          .eq('id', workflowId);
-
-        if (updateError) {
-          console.error('Error updating workflow step:', updateError);
-          return false;
-        }
-
-        return true;
-      }
-
-      return false;
-    } catch (error) {
-      console.error('Error in updateWorkflowStep:', error);
-      return false;
-    }
-  }
-  
-  /**
-   * Get a workflow instance by ID
-   */
-  static async getWorkflowInstance(id: string): Promise<any | null> {
-    // In development mode, return a mock workflow
-    if (import.meta.env.DEV) {
-      return {
-        id,
-        status: 'active',
-        current_step: 0,
-        steps_data: []
-      };
-    }
-    
-    try {
-      const { data, error } = await supabase
-        .from('workflows')
-        .select('*')
-        .eq('id', id)
-        .single();
-
-      if (error) {
-        console.error('Error getting workflow instance:', error);
-        return null;
-      }
-
-      return data;
-    } catch (error) {
-      console.error('Error in getWorkflowInstance:', error);
-      return null;
-    }
-  }
-  
-  /**
-   * Helper function to update the status of the entity associated with a workflow
-   */
-  private static async updateEntityStatus(
-    entityType: string,
+    entityType: EntityType,
     entityId: string,
-    status: 'draft' | 'pending' | 'approved' | 'rejected'
-  ): Promise<boolean> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    context?: Record<string, any>
+  ): Promise<WorkflowInstance> {
     try {
-      let table: string;
-      let mappedStatus = status;
-      
-      switch (entityType) {
-        case 'budget_request':
-          table = 'budget_requests';
-          break;
-        case 'capex_request':
-          table = 'capex_requests';
-          break;
-        case 'asset_disposal':
-          table = 'asset_disposals';
-          break;
-        case 'budget_transfer':
-          table = 'budget_transfers';
-          break;
-        case 'rfi':
-          table = 'rfis';
-          // Map status for RFIs
-          mappedStatus = status === 'approved' ? 'answered' : 
-                  status === 'rejected' ? 'closed' : 
-                  status === 'pending' ? 'pending' : 'open';
-          break;
-        case 'submittal':
-          table = 'submittals';
-          break;
-        case 'transmittal':
-          table = 'transmittals';
-          // Map status for transmittals
-          mappedStatus = status === 'approved' ? 'acknowledged' : 
-                  status === 'rejected' ? 'draft' : 
-                  status === 'pending' ? 'pending' : 'sent';
-          break;
-        default:
-          console.error(`Unknown entity type: ${entityType}`);
-          return false;
-      }
-      
-      const { error } = await supabase
-        .from(table)
-        .update({ status: mappedStatus })
-        .eq('id', entityId);
-      
-      if (error) {
-        console.error(`Error updating ${entityType} status:`, error);
-        return false;
-      }
-      
-      return true;
+      // Backend POST /api/workflows expects: { templateId, entityType, entityId, context? }
+      const payload = { templateId, entityType, entityId, context };
+      const data = await request<BackendWorkflowInstance>('/api/workflows', {
+        method: 'POST',
+        body: payload,
+      });
+      return mapToFrontendInstance(data);
     } catch (error) {
-      console.error('Error in updateEntityStatus:', error);
-      return false;
+      console.error('Error creating workflow instance:', error);
+      throw error;
     }
   }
+
+  static async getWorkflowInstance(id: string): Promise<WorkflowInstance | null> {
+     try {
+      const data = await request<BackendWorkflowInstance>(`/api/workflows/${id}`, { method: 'GET' });
+      if (!data) return null;
+      return mapToFrontendInstance(data);
+    } catch (error: any) {
+      if (error.status === 404) return null;
+      console.error(`Error fetching workflow instance by ID ${id}:`, error);
+      throw error;
+    }
+  }
+  
+  // getWorkflowInstancesByEntity might require a specific backend endpoint like GET /api/workflows?entityType=X&entityId=Y
+  // This was not explicitly part of the backend subtask, so commenting out unless the endpoint exists.
+  // static async getWorkflowInstancesByEntity(entityType: EntityType, entityId: string): Promise<WorkflowInstance[]> {
+  //   try {
+  //     const data = await request<BackendWorkflowInstance[]>(`/api/workflows?entityType=${entityType}&entityId=${entityId}`);
+  //     return data.map(mapToFrontendInstance);
+  //   } catch (error) {
+  //     console.error(`Error fetching workflow instances for entity ${entityType}/${entityId}:`, error);
+  //     throw error;
+  //   }
+  // }
+
+
+  static async advanceWorkflowStep(
+    workflowInstanceId: string,
+    stepIndex: number,
+    decision: 'approved' | 'rejected',
+    comment?: string
+  ): Promise<WorkflowInstance> {
+    try {
+      // Backend PATCH /api/workflows/:workflowId/steps/:stepIndex expects: { status, comment? }
+      const payload = { status: decision, comment };
+      const data = await request<BackendWorkflowInstance>(
+        `/api/workflows/${workflowInstanceId}/steps/${stepIndex}`,
+        {
+          method: 'PATCH',
+          body: payload,
+        }
+      );
+      return mapToFrontendInstance(data);
+    } catch (error) {
+      console.error(`Error advancing workflow step for instance ${workflowInstanceId}, step ${stepIndex}:`, error);
+      throw error;
+    }
+  }
+
+  // The updateEntityStatus logic is now fully handled by the backend.
+  // This method is removed from the frontend service.
 }

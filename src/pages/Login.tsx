@@ -1,14 +1,16 @@
 import { useState, FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom'; // Added Link for consistency if needed elsewhere
 import { motion } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
 import Logo from '../components/ui/Logo';
+// Assuming toast might be used later or was intended. If not, this import can be removed.
+// import { toast } from '@/components/ui/use-toast';
 
 const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(''); // Using local error state
+  const [loading, setLoading] = useState(false); // Changed from isLoading to loading for consistency
   const { login } = useAuth();
   const navigate = useNavigate();
 
@@ -19,9 +21,17 @@ const Login = () => {
     
     try {
       await login(email, password);
-      navigate('/dashboard');
-    } catch (err) {
-      setError('Failed to login. Please check your credentials.');
+      // Successful login handled by AuthContext (sets user, isAuthenticated)
+      // Optional: Show success toast if implemented
+      // toast({ title: 'Login Successful', description: 'Welcome back!' });
+      navigate('/dashboard'); // Redirect to dashboard or desired page
+    } catch (err: any) { // Catching 'any' type for error from context
+      // Error message is now set by the login function in AuthContext if it throws
+      // Or use a generic message if login function doesn't throw specific messages
+      const displayError = err.message || 'Failed to login. Please check your credentials.';
+      setError(displayError);
+      // Optional: Show error toast if implemented
+      // toast({ title: 'Login Failed', description: displayError, variant: 'destructive' });
     } finally {
       setLoading(false);
     }
@@ -61,6 +71,7 @@ const Login = () => {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+                disabled={loading}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 placeholder="your@email.com"
               />
@@ -71,9 +82,10 @@ const Login = () => {
                 <label htmlFor="password" className="block text-sm font-medium text-gray-700">
                   Password
                 </label>
-                <a href="#" className="text-sm text-primary-600 hover:text-primary-500">
+                {/* TODO: Implement forgot password page and link */}
+                <Link to="/forgot-password" className="text-sm text-primary-600 hover:text-primary-500">
                   Forgot password?
-                </a>
+                </Link>
               </div>
               <input
                 id="password"
@@ -81,6 +93,7 @@ const Login = () => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                disabled={loading}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 placeholder="••••••••"
               />
@@ -100,10 +113,21 @@ const Login = () => {
           </form>
           
           <div className="mt-6 text-center text-sm text-gray-600">
+            {/* TODO: Implement Zepth SSO or remove if not applicable */}
             <p>SSO Login (for existing Zepth users)</p>
-            <button className="mt-2 w-full border border-gray-300 text-gray-700 py-2 px-4 rounded-md font-medium hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 transition duration-200">
+            <button
+              onClick={() => alert('Zepth SSO not yet implemented.')}
+              className="mt-2 w-full border border-gray-300 text-gray-700 py-2 px-4 rounded-md font-medium hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 transition duration-200"
+            >
               Continue with Zepth SSO
             </button>
+          </div>
+           <div className="mt-4 text-center text-sm">
+            Don&apos;t have an account?{' '}
+            {/* TODO: Create and link to a registration page */}
+            <Link to="/signup" className="font-medium text-primary-600 hover:text-primary-500">
+              Sign up
+            </Link>
           </div>
         </div>
         

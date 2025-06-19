@@ -1,59 +1,6 @@
-import { supabase } from '../lib/supabase';
+import { request } from '../lib/apiClient'; // Import the new API client
 
-// Mock data for development
-const mockCapexRequests: CapexRequest[] = [
-  {
-    id: 'h7i8j9k0-l1m2-3n4o-5p6q-r7s8t9u0v1w2',
-    propertyId: '3c6c8353-2122-4e63-b63b-c9bdcb6b94a3',
-    budgetId: 'b1c2d3e4-f5g6-7h8i-9j0k-l1m2n3o4p5q6',
-    projectName: 'Lobby Renovation',
-    category: 'Facilities',
-    budgetReference: 'FAC-2025-001',
-    amount: 75000,
-    startDate: '2025-03-15',
-    endDate: '2025-05-30',
-    status: 'pending',
-    projectLead: 'John Smith',
-    department: 'Operations',
-    subDepartment: 'Facilities',
-    designConsultant: 'Modern Design Co.',
-    mainContractor: 'BuildRight Construction',
-    description: 'Complete renovation of the main lobby area including new flooring, lighting, and furniture',
-    titleArea: 'Main Lobby',
-    remarks: 'Priority project to improve guest first impressions',
-    workflowId: 'z7a8b9c0-d1e2-3f4g-5h6i-j7k8l9m0n1o2',
-    currentStep: 1,
-    createdAt: '2024-02-10T09:30:00Z',
-    createdBy: 'u1s2e3r4-i5d6-7h8e9-r0e1-2i3s4h5e6r7e',
-    updatedAt: '2024-02-15T14:45:00Z'
-  },
-  {
-    id: 'i8j9k0l1-m2n3-4o5p-6q7r-s8t9u0v1w2x3',
-    propertyId: 'f8d7a9e5-b8c2-4b3a-9f4e-d5c6b7a8f9e0',
-    budgetId: 'd3e4f5g6-h7i8-9j0k-1l2m-n3o4p5q6r7s8',
-    projectName: 'HVAC System Upgrade',
-    category: 'Engineering',
-    budgetReference: 'ENG-2025-003',
-    amount: 120000,
-    startDate: '2025-04-10',
-    endDate: '2025-06-15',
-    status: 'approved',
-    projectLead: 'Emily Johnson',
-    department: 'Engineering',
-    subDepartment: 'Mechanical',
-    designConsultant: 'TechSystems Engineering',
-    mainContractor: 'Climate Control Solutions',
-    description: 'Upgrade of the hotel HVAC system to improve energy efficiency and guest comfort',
-    titleArea: 'Building Systems',
-    remarks: 'Expected to reduce energy costs by 15%',
-    workflowId: 'a8b9c0d1-e2f3-4g5h-6i7j-k8l9m0n1o2p3',
-    currentStep: 3,
-    createdAt: '2024-01-25T11:15:00Z',
-    createdBy: 'u1s2e3r4-i5d6-7h8e9-r0e1-2i3s4h5e6r7e',
-    updatedAt: '2024-02-05T16:30:00Z'
-  }
-];
-
+// Interfaces remain the same as they define the shape of CapexRequest data
 export interface CapexRequestUpdate {
   projectName?: string;
   category?: string;
@@ -61,7 +8,7 @@ export interface CapexRequestUpdate {
   amount?: number;
   startDate?: string;
   endDate?: string;
-  status?: 'draft' | 'pending' | 'approved' | 'rejected';
+  status?: 'draft' | 'pending' | 'approved' | 'rejected'; // Consider if these statuses align with backend
   projectLead?: string;
   department?: string;
   subDepartment?: string;
@@ -70,7 +17,8 @@ export interface CapexRequestUpdate {
   description?: string;
   titleArea?: string;
   remarks?: string;
-  currentStep?: number;
+  currentStep?: number; // Workflow related, might be updated via workflow actions
+  // updatedBy should be handled by backend from JWT
 }
 
 export interface CapexRequest {
@@ -83,217 +31,163 @@ export interface CapexRequest {
   amount: number;
   startDate: string;
   endDate: string;
-  status: 'draft' | 'pending' | 'approved' | 'rejected';
+  status: 'draft' | 'pending' | 'approved' | 'rejected' | 'pending_approval' | 'in_progress' | 'completed' | 'on_hold' | 'cancelled'; // Expanded based on schema.sql
   projectLead: string;
   department: string;
-  subDepartment: string;
+  subDepartment?: string; // Was optional in schema
   designConsultant?: string;
   mainContractor?: string;
   description: string;
-  titleArea: string;
+  titleArea?: string; // Was optional in schema
   remarks?: string;
-  workflowId: string;
-  currentStep: number;
+  workflowId?: string; // Optional in schema, can be null
+  currentStep?: number; // Optional in schema
   createdAt: string;
-  createdBy: string;
-  updatedAt: string;
-  updatedBy?: string;
+  createdBy?: string; // Optional, backend might fill this
+  updatedAt?: string; // Optional
+  updatedBy?: string; // Optional, backend might fill this
 }
+
+// Helper to map backend capex request data to frontend CapexRequest type if needed.
+// For now, assuming direct compatibility for simplicity or backend aligns with this.
+const mapToFrontendCapex = (data: any): CapexRequest => {
+  return {
+    id: data.id,
+    propertyId: data.property_id, // Map from property_id
+    budgetId: data.budget_id,
+    projectName: data.project_name,
+    category: data.category,
+    budgetReference: data.budget_reference,
+    amount: parseFloat(data.amount) || 0, // Ensure numeric
+    startDate: data.start_date,
+    endDate: data.end_date,
+    status: data.status,
+    projectLead: data.project_lead,
+    department: data.department,
+    subDepartment: data.sub_department,
+    designConsultant: data.design_consultant,
+    mainContractor: data.main_contractor,
+    description: data.description,
+    titleArea: data.title_area,
+    remarks: data.remarks,
+    workflowId: data.workflow_id,
+    currentStep: data.current_step,
+    createdAt: data.created_at,
+    createdBy: data.created_by,
+    updatedAt: data.updated_at,
+    updatedBy: data.updated_by,
+  };
+};
+
 
 export const loadCapexRequests = async (
   propertyId: string,
-  status?: 'draft' | 'pending' | 'approved' | 'rejected'
+  status?: 'draft' | 'pending' | 'approved' | 'rejected' // Keep frontend statuses for filtering if desired
 ): Promise<CapexRequest[]> => {
+  // TODO: Define backend API endpoint for fetching capex requests.
+  // Example: GET /api/properties/${propertyId}/capex-requests?status=${status}
+  // Or GET /api/capex-requests?propertyId=${propertyId}&status=${status}
   try {
-    // In development mode, return mock data
-    if (import.meta.env.DEV) {
-      let filteredRequests = mockCapexRequests.filter(request => request.propertyId === propertyId);
-      
-      if (status) {
-        filteredRequests = filteredRequests.filter(request => request.status === status);
-      }
-      
-      return filteredRequests;
-    }
-    
-    // In production, fetch from Supabase
-    let query = supabase
-      .from('capex_requests')
-      .select('*')
-      .eq('property_id', propertyId);
-  
+    let endpoint = `/api/capex-requests?propertyId=${propertyId}`;
     if (status) {
-      query = query.eq('status', status);
+      endpoint += `&status=${status}`;
     }
-  
-    const { data, error } = await query.order('created_at', { ascending: false });
-  
-    if (error) {
-      console.error('Error loading CAPEX requests:', error);
-      return [];
-    }
-  
-    return data.map(row => ({
-      id: row.id,
-      propertyId: row.property_id,
-      budgetId: row.budget_id,
-      projectName: row.project_name,
-      category: row.category,
-      budgetReference: row.budget_reference,
-      amount: row.amount,
-      startDate: row.start_date,
-      endDate: row.end_date,
-      status: row.status,
-      projectLead: row.project_lead,
-      department: row.department,
-      subDepartment: row.sub_department,
-      designConsultant: row.design_consultant,
-      mainContractor: row.main_contractor,
-      description: row.description,
-      titleArea: row.title_area,
-      remarks: row.remarks,
-      workflowId: row.workflow_id,
-      currentStep: row.current_step,
-      createdAt: row.created_at,
-      createdBy: row.created_by,
-      updatedAt: row.updated_at,
-      updatedBy: row.updated_by
-    }));
+    // Assuming the backend returns an array of objects matching the CapexRequest structure (after mapping)
+    const data = await request<any[]>(endpoint, { method: 'GET' });
+    return data.map(mapToFrontendCapex);
   } catch (error) {
-    console.error('Error loading CAPEX requests:', error);
+    console.error('Error loading CAPEX requests via API:', error);
+    // Fallback to empty array or throw error as per application's error handling strategy
     return [];
   }
 };
 
 export const createCapexRequest = async (
-  request: Omit<CapexRequest, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>
+  // Omit fields that are auto-generated by backend or come from JWT (createdBy, id, createdAt, updatedAt, updatedBy)
+  requestData: Omit<CapexRequest, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy' | 'status' | 'currentStep' | 'workflowId'> & { status?: CapexRequest['status'] }
 ): Promise<CapexRequest | null> => {
+  // TODO: Define backend API endpoint for creating a capex request.
+  // Example: POST /api/capex-requests
+  // Backend should handle setting createdBy from JWT, createdAt, etc.
   try {
-    // In development mode, return mock data
-    if (import.meta.env.DEV) {
-      const newRequest: CapexRequest = {
-        ...request,
-        id: crypto.randomUUID(),
-        createdAt: new Date().toISOString(),
-        createdBy: 'u1s2e3r4-i5d6-7h8e9-r0e1-2i3s4h5e6r7e',
-        updatedAt: new Date().toISOString()
-      };
-      
-      mockCapexRequests.push(newRequest);
-      return newRequest;
-    }
-    
-    // In production, insert into Supabase
-    const { data, error } = await supabase
-      .from('capex_requests')
-      .insert([{
-        property_id: request.propertyId,
-        budget_id: request.budgetId,
-        project_name: request.projectName,
-        category: request.category,
-        budget_reference: request.budgetReference,
-        amount: request.amount,
-        start_date: request.startDate,
-        end_date: request.endDate,
-        status: request.status,
-        project_lead: request.projectLead,
-        department: request.department,
-        sub_department: request.subDepartment,
-        design_consultant: request.designConsultant,
-        main_contractor: request.mainContractor,
-        description: request.description,
-        title_area: request.titleArea,
-        remarks: request.remarks,
-        workflow_id: request.workflowId,
-        current_step: request.currentStep,
-        created_by: (await supabase.auth.getUser()).data.user?.id
-      }])
-      .select()
-      .single();
-  
-    if (error) {
-      console.error('Error creating CAPEX request:', error);
-      return null;
-    }
-  
-    return {
-      id: data.id,
-      propertyId: data.property_id,
-      budgetId: data.budget_id,
-      projectName: data.project_name,
-      category: data.category,
-      budgetReference: data.budget_reference,
-      amount: data.amount,
-      startDate: data.start_date,
-      endDate: data.end_date,
-      status: data.status,
-      projectLead: data.project_lead,
-      department: data.department,
-      subDepartment: data.sub_department,
-      designConsultant: data.design_consultant,
-      mainContractor: data.main_contractor,
-      description: data.description,
-      titleArea: data.title_area,
-      remarks: data.remarks,
-      workflowId: data.workflow_id,
-      currentStep: data.current_step,
-      createdAt: data.created_at,
-      createdBy: data.created_by,
-      updatedAt: data.updated_at,
-      updatedBy: data.updated_by
+    // Map frontend field names to backend field names if they differ
+    const payload = {
+      property_id: requestData.propertyId,
+      budget_id: requestData.budgetId,
+      project_name: requestData.projectName,
+      category: requestData.category,
+      budget_reference: requestData.budgetReference,
+      amount: requestData.amount,
+      start_date: requestData.startDate,
+      end_date: requestData.endDate,
+      status: requestData.status || 'draft', // Default status
+      project_lead: requestData.projectLead,
+      department: requestData.department,
+      sub_department: requestData.subDepartment,
+      design_consultant: requestData.designConsultant,
+      main_contractor: requestData.mainContractor,
+      description: requestData.description,
+      title_area: requestData.titleArea,
+      remarks: requestData.remarks,
+      // workflowId and currentStep might be set initially by backend if a default workflow starts
     };
+    const data = await request<any>('/api/capex-requests', { // Replace any with backend response type
+      method: 'POST',
+      body: payload,
+    });
+    return mapToFrontendCapex(data);
   } catch (error) {
-    console.error('Error creating CAPEX request:', error);
+    console.error('Error creating CAPEX request via API:', error);
     return null;
   }
 };
 
 export const updateCapexRequest = async (
   id: string,
-  updates: CapexRequestUpdate
-): Promise<boolean> => {
-  const { error } = await supabase
-    .from('capex_requests')
-    .update({
-      project_name: updates.projectName,
-      category: updates.category,
-      budget_reference: updates.budgetReference,
-      amount: updates.amount,
-      start_date: updates.startDate,
-      end_date: updates.endDate,
-      status: updates.status,
-      project_lead: updates.projectLead,
-      department: updates.department,
-      sub_department: updates.subDepartment,
-      design_consultant: updates.designConsultant,
-      main_contractor: updates.mainContractor,
-      description: updates.description,
-      title_area: updates.titleArea,
-      remarks: updates.remarks,
-      current_step: updates.currentStep,
-      updated_at: new Date().toISOString(),
-      updated_by: (await supabase.auth.getUser()).data.user?.id
-    })
-    .eq('id', id);
+  updates: CapexRequestUpdate // Frontend sends only the fields it wants to update
+): Promise<CapexRequest | null> => { // Return updated request or boolean
+  // TODO: Define backend API endpoint for updating a capex request.
+  // Example: PATCH /api/capex-requests/${id}
+  // Backend should handle updatedBy from JWT and updatedAt.
+  try {
+     // Map frontend field names to backend field names for the payload
+    const payload: any = {};
+    if (updates.projectName !== undefined) payload.project_name = updates.projectName;
+    if (updates.category !== undefined) payload.category = updates.category;
+    if (updates.budgetReference !== undefined) payload.budget_reference = updates.budgetReference;
+    if (updates.amount !== undefined) payload.amount = updates.amount;
+    if (updates.startDate !== undefined) payload.start_date = updates.startDate;
+    if (updates.endDate !== undefined) payload.end_date = updates.endDate;
+    if (updates.status !== undefined) payload.status = updates.status;
+    if (updates.projectLead !== undefined) payload.project_lead = updates.projectLead;
+    if (updates.department !== undefined) payload.department = updates.department;
+    if (updates.subDepartment !== undefined) payload.sub_department = updates.subDepartment;
+    if (updates.designConsultant !== undefined) payload.design_consultant = updates.designConsultant;
+    if (updates.mainContractor !== undefined) payload.main_contractor = updates.mainContractor;
+    if (updates.description !== undefined) payload.description = updates.description;
+    if (updates.titleArea !== undefined) payload.title_area = updates.titleArea;
+    if (updates.remarks !== undefined) payload.remarks = updates.remarks;
+    // currentStep and workflowId are typically updated via workflow actions, not direct PATCH here.
 
-  if (error) {
-    console.error('Error updating CAPEX request:', error);
-    return false;
+    const data = await request<any>(`/api/capex-requests/${id}`, { // Replace any with backend response type
+      method: 'PATCH',
+      body: payload,
+    });
+    return mapToFrontendCapex(data);
+  } catch (error) {
+    console.error(`Error updating CAPEX request ${id} via API:`, error);
+    return null; // Or throw error
   }
-
-  return true;
 };
 
 export const deleteCapexRequest = async (id: string): Promise<boolean> => {
-  const { error } = await supabase
-    .from('capex_requests')
-    .delete()
-    .eq('id', id);
-
-  if (error) {
-    console.error('Error deleting CAPEX request:', error);
+  // TODO: Define backend API endpoint for deleting a capex request.
+  // Example: DELETE /api/capex-requests/${id}
+  try {
+    await request<void>(`/api/capex-requests/${id}`, { method: 'DELETE' });
+    return true;
+  } catch (error) {
+    console.error(`Error deleting CAPEX request ${id} via API:`, error);
     return false;
   }
-
-  return true;
 };

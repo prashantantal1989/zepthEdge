@@ -217,13 +217,12 @@ const BudgetNew = () => {
         
         if (workflowId) {
           // Update the budget request with the workflow ID
-          await supabase
-            .from('budget_requests')
-            .update({ 
-              workflow_id: workflowId,
-              status: 'pending'
-            })
-            .eq('id', newBudgetRequest.id);
+        if (workflowId && newBudgetRequest) {
+          // Update the budget request with the workflow ID and set status to pending
+          await updateBudgetRequest(newBudgetRequest.id, {
+            workflowId: workflowId,
+            status: 'pending' // Align with backend schema status for BudgetRequest
+          });
         }
       }
       
