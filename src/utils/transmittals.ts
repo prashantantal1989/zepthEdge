@@ -1,173 +1,108 @@
-import { supabase } from '../lib/supabase';
+import { request } from '../lib/apiClient';
 
-// Mock data for development
-const mockTransmittals: Transmittal[] = [
-  {
-    id: 's8t9u0v1-w2x3-4y5z-6a7b-c8d9e0f1g2h3',
-    propertyId: '3c6c8353-2122-4e63-b63b-c9bdcb6b94a3',
-    subject: 'Lobby Renovation Plans',
-    recipients: ['architect@example.com', 'contractor@example.com'],
-    dueDate: '2024-05-15',
-    notes: 'Please review and provide feedback by the due date',
-    status: 'sent',
-    workflowId: 'b8c9d0e1-f2g3-4h5i-6j7k-8l9m0n1o2p3',
-    currentStep: 2,
-    createdAt: '2024-04-01T10:30:00Z',
-    createdBy: 'u1s2e3r4-i5d6-7h8e9-r0e1-2i3s4h5e6r7e',
-    updatedAt: '2024-04-01T10:30:00Z'
-  },
-  {
-    id: 't9u0v1w2-x3y4-5z6a-7b8c-d9e0f1g2h3i4',
-    propertyId: 'f8d7a9e5-b8c2-4b3a-9f4e-d5c6b7a8f9e0',
-    subject: 'HVAC System Specifications',
-    recipients: ['engineer@example.com', 'vendor@example.com'],
-    dueDate: '2024-04-30',
-    notes: 'Technical specifications for the new HVAC system',
-    status: 'pending',
-    workflowId: 'c9d0e1f2-g3h4-5i6j-7k8l-9m0n1o2p3q4',
-    currentStep: 1,
-    createdAt: '2024-04-05T14:45:00Z',
-    createdBy: 'u1s2e3r4-i5d6-7h8e9-r0e1-2i3s4h5e6r7e',
-    updatedAt: '2024-04-05T14:45:00Z'
-  }
-];
+// Backend schema status: ('draft', 'pending', 'sent', 'acknowledged', 'overdue', 'cancelled')
+type TransmittalStatus = 'draft' | 'pending' | 'sent' | 'acknowledged' | 'overdue' | 'cancelled';
 
 export interface TransmittalUpdate {
   subject?: string;
   recipients?: string[];
-  dueDate?: string;
+  dueDate?: string | null; // Allow null to remove due date
   notes?: string;
-  status?: 'draft' | 'pending' | 'sent' | 'acknowledged';
-  currentStep?: number;
+  status?: TransmittalStatus;
+  // currentStep and workflowId are usually managed by workflow engine on backend
 }
 
 export interface Transmittal {
   id: string;
-  propertyId: string;
+  propertyId?: string; // Optional if transmittal can be non-property specific
   subject: string;
   recipients: string[];
-  dueDate: string;
+  dueDate?: string | null; // Align with schema (can be null)
   notes?: string;
-  status: 'draft' | 'pending' | 'sent' | 'acknowledged';
-  workflowId: string;
-  currentStep: number;
+  status: TransmittalStatus;
+  workflowId?: string | null;
+  currentStep?: number | null;
   createdAt: string;
-  createdBy: string;
-  updatedAt: string;
-  updatedBy?: string;
+  createdBy?: string; // User ID
+  updatedAt?: string;
+  updatedBy?: string; // User ID
 }
 
+// Helper to map backend data to frontend Transmittal type
+const mapToFrontendTransmittal = (data: any): Transmittal => {
+  return {
+    id: data.id,
+    propertyId: data.property_id,
+    subject: data.subject,
+    recipients: data.recipients || [], // Ensure recipients is an array
+    dueDate: data.due_date,
+    notes: data.notes,
+    status: data.status as TransmittalStatus,
+    workflowId: data.workflow_id,
+    currentStep: data.current_step,
+    createdAt: data.created_at,
+    createdBy: data.created_by,
+    updatedAt: data.updated_at,
+    updatedBy: data.updated_by,
+  };
+};
+
+// Helper to map frontend Transmittal data (for create/update) to backend payload
+const mapToBackendTransmittalPayload = (
+  transmittalData: Partial<TransmittalUpdate> | Omit<Transmittal, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>
+): any => {
+  const payload: any = {};
+  if (transmittalData.subject !== undefined) payload.subject = transmittalData.subject;
+  if (transmittalData.recipients !== undefined) payload.recipients = transmittalData.recipients;
+  if (transmittalData.dueDate !== undefined) payload.due_date = transmittalData.dueDate; // Handles null for removal
+  if (transmittalData.notes !== undefined) payload.notes = transmittalData.notes;
+  if (transmittalData.status !== undefined) payload.status = transmittalData.status;
+
+  if ('propertyId' in transmittalData && transmittalData.propertyId !== undefined) payload.property_id = transmittalData.propertyId;
+  if ('workflowId' in transmittalData && transmittalData.workflowId !== undefined) payload.workflow_id = transmittalData.workflowId;
+  if ('currentStep' in transmittalData && transmittalData.currentStep !== undefined) payload.current_step = transmittalData.currentStep;
+  // created_by, updated_by are handled by backend
+  return payload;
+};
+
+
 export const loadTransmittals = async (
-  propertyId: string,
-  status?: 'draft' | 'pending' | 'sent' | 'acknowledged'
+  propertyId?: string, // Optional
+  status?: TransmittalStatus
 ): Promise<Transmittal[]> => {
+  // TODO: Define backend API: GET /api/transmittals?propertyId=X&status=Y
+  let endpoint = '/api/transmittals';
+  const params = new URLSearchParams();
+  if (propertyId) params.append('propertyId', propertyId);
+  if (status) params.append('status', status);
+  const queryString = params.toString();
+  if (queryString) endpoint += `?${queryString}`;
+
   try {
-    // In development mode, return mock data
-    if (import.meta.env.DEV) {
-      let filteredTransmittals = mockTransmittals.filter(transmittal => transmittal.propertyId === propertyId);
-      
-      if (status) {
-        filteredTransmittals = filteredTransmittals.filter(transmittal => transmittal.status === status);
-      }
-      
-      return filteredTransmittals;
-    }
-    
-    // In production, fetch from Supabase
-    let query = supabase
-      .from('transmittals')
-      .select('*')
-      .eq('property_id', propertyId);
-  
-    if (status) {
-      query = query.eq('status', status);
-    }
-  
-    const { data, error } = await query.order('created_at', { ascending: false });
-  
-    if (error) {
-      console.error('Error loading transmittals:', error);
-      return [];
-    }
-  
-    return data.map(row => ({
-      id: row.id,
-      propertyId: row.property_id,
-      subject: row.subject,
-      recipients: row.recipients,
-      dueDate: row.due_date,
-      notes: row.notes,
-      status: row.status,
-      workflowId: row.workflow_id,
-      currentStep: row.current_step,
-      createdAt: row.created_at,
-      createdBy: row.created_by,
-      updatedAt: row.updated_at,
-      updatedBy: row.updated_by
-    }));
+    const data = await request<any[]>(endpoint, { method: 'GET' }); // Replace any[] with BackendTransmittal[]
+    return data.map(mapToFrontendTransmittal);
   } catch (error) {
-    console.error('Error loading transmittals:', error);
+    console.error('Error loading transmittals via API:', error);
     return [];
   }
 };
 
 export const createTransmittal = async (
-  transmittal: Omit<Transmittal, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>
+  transmittalData: Omit<Transmittal, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy' | 'status'> & { status?: TransmittalStatus }
 ): Promise<Transmittal | null> => {
+  // TODO: Define backend API: POST /api/transmittals
+  // Backend sets id, created_by, created_at, updated_at, status (e.g. 'draft' by default)
   try {
-    // In development mode, return mock data
-    if (import.meta.env.DEV) {
-      const newTransmittal: Transmittal = {
-        ...transmittal,
-        id: crypto.randomUUID(),
-        createdAt: new Date().toISOString(),
-        createdBy: 'u1s2e3r4-i5d6-7h8e9-r0e1-2i3s4h5e6r7e',
-        updatedAt: new Date().toISOString()
-      };
-      
-      mockTransmittals.push(newTransmittal);
-      return newTransmittal;
-    }
-    
-    // In production, insert into Supabase
-    const { data, error } = await supabase
-      .from('transmittals')
-      .insert([{
-        property_id: transmittal.propertyId,
-        subject: transmittal.subject,
-        recipients: transmittal.recipients,
-        due_date: transmittal.dueDate,
-        notes: transmittal.notes,
-        status: transmittal.status,
-        workflow_id: transmittal.workflowId,
-        current_step: transmittal.currentStep,
-        created_by: (await supabase.auth.getUser()).data.user?.id
-      }])
-      .select()
-      .single();
-  
-    if (error) {
-      console.error('Error creating transmittal:', error);
-      return null;
-    }
-  
-    return {
-      id: data.id,
-      propertyId: data.property_id,
-      subject: data.subject,
-      recipients: data.recipients,
-      dueDate: data.due_date,
-      notes: data.notes,
-      status: data.status,
-      workflowId: data.workflow_id,
-      currentStep: data.current_step,
-      createdAt: data.created_at,
-      createdBy: data.created_by,
-      updatedAt: data.updated_at,
-      updatedBy: data.updated_by
-    };
+    const payload = mapToBackendTransmittalPayload(transmittalData);
+    if (!payload.status) payload.status = 'draft'; // Default status
+
+    const data = await request<any>('/api/transmittals', { // Replace any with BackendTransmittal
+      method: 'POST',
+      body: payload,
+    });
+    return mapToFrontendTransmittal(data);
   } catch (error) {
-    console.error('Error creating transmittal:', error);
+    console.error('Error creating transmittal via API:', error);
     return null;
   }
 };
@@ -175,52 +110,31 @@ export const createTransmittal = async (
 export const updateTransmittal = async (
   id: string,
   updates: TransmittalUpdate
-): Promise<boolean> => {
-  const { error } = await supabase
-    .from('transmittals')
-    .update({
-      subject: updates.subject,
-      recipients: updates.recipients,
-      due_date: updates.dueDate,
-      notes: updates.notes,
-      status: updates.status,
-      current_step: updates.currentStep,
-      updated_at: new Date().toISOString(),
-      updated_by: supabase.auth.user()?.id
-    })
-    .eq('id', id);
-
-  if (error) {
-    console.error('Error updating transmittal:', error);
-    return false;
+): Promise<Transmittal | null> => {
+  // TODO: Define backend API: PATCH /api/transmittals/:id
+  // Backend sets updated_by, updated_at
+  try {
+    const payload = mapToBackendTransmittalPayload(updates);
+    const data = await request<any>(`/api/transmittals/${id}`, { // Replace any with BackendTransmittal
+      method: 'PATCH',
+      body: payload,
+    });
+    return mapToFrontendTransmittal(data);
+  } catch (error) {
+    console.error(`Error updating transmittal ${id} via API:`, error);
+    return null; // Or throw error
   }
-
-  return true;
 };
 
 export const deleteTransmittal = async (id: string): Promise<boolean> => {
+  // TODO: Define backend API: DELETE /api/transmittals/:id
   try {
-    // In development mode, update mock data
-    if (import.meta.env.DEV) {
-      const initialLength = mockTransmittals.length;
-      mockTransmittals = mockTransmittals.filter(transmittal => transmittal.id !== id);
-      return mockTransmittals.length < initialLength;
-    }
-    
-    // In production, delete from Supabase
-    const { error } = await supabase
-      .from('transmittals')
-      .delete()
-      .eq('id', id);
-  
-    if (error) {
-      console.error('Error deleting transmittal:', error);
-      return false;
-    }
-  
+    await request<void>(`/api/transmittals/${id}`, { method: 'DELETE' });
     return true;
   } catch (error) {
-    console.error('Error deleting transmittal:', error);
+    console.error(`Error deleting transmittal ${id} via API:`, error);
     return false;
   }
 };
+
+// TODO: Add getTransmittalById(id: string) if needed

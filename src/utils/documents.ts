@@ -1,249 +1,110 @@
-import { supabase } from '../lib/supabase';
+import { request } from '../lib/apiClient'; // Import the new API client
 
-// Mock data for development
-const mockDocuments: Document[] = [
-  {
-    id: 'm2n3o4p5-q6r7-8s9t-0u1v-w2x3y4z5a6b7',
-    propertyId: '3c6c8353-2122-4e63-b63b-c9bdcb6b94a3',
-    name: 'Budget Proposal 2025.pdf',
-    type: 'budget',
-    path: '3c6c8353-2122-4e63-b63b-c9bdcb6b94a3/budget/budget_proposal_2025.pdf',
-    size: 2457600,
-    mimeType: 'application/pdf',
-    metadata: { budgetId: 'b1c2d3e4-f5g6-7h8i-9j0k-l1m2n3o4p5q6' },
-    createdAt: '2024-01-15T10:30:00Z',
-    createdBy: 'u1s2e3r4-i5d6-7h8e9-r0e1-2i3s4h5e6r7e',
-    updatedAt: '2024-01-15T10:30:00Z'
-  },
-  {
-    id: 'n3o4p5q6-r7s8-9t0u-1v2w-x3y4z5a6b7c8',
-    propertyId: '3c6c8353-2122-4e63-b63b-c9bdcb6b94a3',
-    name: 'Lobby Renovation Plans.dwg',
-    type: 'capex',
-    path: '3c6c8353-2122-4e63-b63b-c9bdcb6b94a3/capex/lobby_renovation_plans.dwg',
-    size: 5242880,
-    mimeType: 'application/acad',
-    metadata: { capexId: 'h7i8j9k0-l1m2-3n4o-5p6q-r7s8t9u0v1w2' },
-    createdAt: '2024-02-10T14:45:00Z',
-    createdBy: 'u1s2e3r4-i5d6-7h8e9-r0e1-2i3s4h5e6r7e',
-    updatedAt: '2024-02-10T14:45:00Z'
-  },
-  {
-    id: 'o4p5q6r7-s8t9-0u1v-2w3x-y4z5a6b7c8d9',
-    propertyId: 'f8d7a9e5-b8c2-4b3a-9f4e-d5c6b7a8f9e0',
-    name: 'HVAC System Specifications.pdf',
-    type: 'capex',
-    path: 'f8d7a9e5-b8c2-4b3a-9f4e-d5c6b7a8f9e0/capex/hvac_system_specifications.pdf',
-    size: 3145728,
-    mimeType: 'application/pdf',
-    metadata: { capexId: 'i8j9k0l1-m2n3-4o5p-6q7r-s8t9u0v1w2x3' },
-    createdAt: '2024-01-25T16:30:00Z',
-    createdBy: 'u1s2e3r4-i5d6-7h8e9-r0e1-2i3s4h5e6r7e',
-    updatedAt: '2024-01-25T16:30:00Z'
-  }
-];
-
+// Interfaces remain largely the same, but ensure they match frontend needs
+// and what the new backend API will provide.
 export interface DocumentUpdate {
   name?: string;
   type?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   metadata?: any;
+  // propertyId should not be updatable for an existing document via this simple update.
+  // Path, size, mimeType, createdBy, createdAt, updatedBy, updatedAt are typically managed by backend.
 }
 
 export interface Document {
   id: string;
-  propertyId: string;
+  propertyId?: string; // Made optional, as a document might not be property-specific
   name: string;
-  type: string;
-  path: string;
-  size: number;
-  mimeType: string;
+  type: string; // e.g., 'contract', 'invoice', 'drawing', 'report'
+  path: string; // Path or URL to access the file
+  size?: number; // Optional, in bytes
+  mimeType?: string; // Optional
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   metadata?: any;
   createdAt: string;
-  createdBy: string;
-  updatedAt: string;
-  updatedBy?: string;
+  createdBy?: string; // User ID or name
+  updatedAt?: string;
+  updatedBy?: string; // User ID or name
 }
 
+// Helper to map backend document data if necessary
+// Assuming backend returns fields like property_id, mime_type, created_at, created_by etc.
+const mapToFrontendDocument = (data: any): Document => {
+  return {
+    id: data.id,
+    propertyId: data.property_id,
+    name: data.name,
+    type: data.type,
+    path: data.path, // This might be a URL from the backend now
+    size: data.size,
+    mimeType: data.mime_type,
+    metadata: data.metadata,
+    createdAt: data.created_at,
+    createdBy: data.created_by, // Could be a user ID, might need fetching user details elsewhere if name needed
+    updatedAt: data.updated_at,
+    updatedBy: data.updated_by,
+  };
+};
+
 export const loadDocuments = async (
-  propertyId: string,
+  propertyId?: string, // Make propertyId optional for system-wide documents
   type?: string
 ): Promise<Document[]> => {
+  // TODO: Define backend API: GET /api/documents?propertyId=X&type=Y
+  // Or if propertyId is part of path: GET /api/properties/X/documents?type=Y
+  let endpoint = '/api/documents';
+  const params = new URLSearchParams();
+  if (propertyId) params.append('propertyId', propertyId);
+  if (type) params.append('type', type);
+  const queryString = params.toString();
+  if (queryString) endpoint += `?${queryString}`;
+
   try {
-    // In development mode, return mock data
-    if (import.meta.env.DEV) {
-      let filteredDocs = mockDocuments.filter(doc => doc.propertyId === propertyId);
-      
-      if (type) {
-        filteredDocs = filteredDocs.filter(doc => doc.type === type);
-      }
-      
-      return filteredDocs;
-    }
-    
-    // In production, fetch from Supabase
-    let query = supabase
-      .from('documents')
-      .select('*')
-      .eq('property_id', propertyId);
-  
-    if (type) {
-      query = query.eq('type', type);
-    }
-  
-    const { data, error } = await query.order('created_at', { ascending: false });
-  
-    if (error) {
-      console.error('Error loading documents:', error);
-      return [];
-    }
-  
-    return data.map(row => ({
-      id: row.id,
-      propertyId: row.property_id,
-      name: row.name,
-      type: row.type,
-      path: row.path,
-      size: row.size,
-      mimeType: row.mime_type,
-      metadata: row.metadata,
-      createdAt: row.created_at,
-      createdBy: row.created_by,
-      updatedAt: row.updated_at,
-      updatedBy: row.updated_by
-    }));
+    const data = await request<any[]>(endpoint, { method: 'GET' }); // Replace any[] with BackendDocument[]
+    return data.map(mapToFrontendDocument);
   } catch (error) {
-    console.error('Error loading documents:', error);
+    console.error('Error loading documents via API:', error);
     return [];
   }
 };
 
 export const uploadDocument = async (
-  propertyId: string,
   file: File,
-  type: string,
+  propertyId?: string, // Optional propertyId
+  type?: string, // Optional type, can be part of metadata or determined by backend
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   metadata?: any
 ): Promise<Document | null> => {
+  // TODO: Define backend API for file upload: POST /api/documents/upload or POST /api/documents
+  // Backend will handle file storage (e.g., local disk, S3) and create DB record.
+  const formData = new FormData();
+  formData.append('file', file);
+  if (propertyId) formData.append('propertyId', propertyId);
+  if (type) formData.append('type', type);
+  if (metadata) formData.append('metadata', JSON.stringify(metadata));
+
   try {
-    // In development mode, return mock data
-    if (import.meta.env.DEV) {
-      const newDocument: Document = {
-        id: crypto.randomUUID(),
-        propertyId,
-        name: file.name,
-        type,
-        path: `${propertyId}/${type}/${Date.now()}_${file.name}`,
-        size: file.size,
-        mimeType: file.type,
-        metadata: metadata || {},
-        createdAt: new Date().toISOString(),
-        createdBy: 'u1s2e3r4-i5d6-7h8e9-r0e1-2i3s4h5e6r7e',
-        updatedAt: new Date().toISOString()
-      };
-      
-      mockDocuments.push(newDocument);
-      return newDocument;
-    }
-    
-    // In production, upload to Supabase Storage
-    const filePath = `${propertyId}/${type}/${Date.now()}_${file.name}`;
-    const { data: fileData, error: fileError } = await supabase.storage
-      .from('documents')
-      .upload(filePath, file);
-  
-    if (fileError) {
-      console.error('Error uploading file:', fileError);
-      return null;
-    }
-  
-    // Then, create a document record in the database
-    const { data, error } = await supabase
-      .from('documents')
-      .insert([{
-        property_id: propertyId,
-        name: file.name,
-        type,
-        path: filePath,
-        size: file.size,
-        mime_type: file.type,
-        metadata: metadata || {},
-        created_by: (await supabase.auth.getUser()).data.user?.id
-      }])
-      .select()
-      .single();
-  
-    if (error) {
-      console.error('Error creating document record:', error);
-      // Try to clean up the uploaded file
-      await supabase.storage.from('documents').remove([filePath]);
-      return null;
-    }
-  
-    return {
-      id: data.id,
-      propertyId: data.property_id,
-      name: data.name,
-      type: data.type,
-      path: data.path,
-      size: data.size,
-      mimeType: data.mime_type,
-      metadata: data.metadata,
-      createdAt: data.created_at,
-      createdBy: data.created_by,
-      updatedAt: data.updated_at,
-      updatedBy: data.updated_by
-    };
+    // The `request` helper in apiClient.ts handles FormData correctly
+    // by not setting Content-Type, allowing browser to set it with boundary.
+    const data = await request<any>('/api/documents', { // Endpoint for uploads
+      method: 'POST',
+      body: formData,
+    }); // Replace any with BackendDocument
+    return mapToFrontendDocument(data);
   } catch (error) {
-    console.error('Error uploading document:', error);
+    console.error('Error uploading document via API:', error);
     return null;
   }
 };
 
 export const deleteDocument = async (id: string): Promise<boolean> => {
+  // TODO: Define backend API: DELETE /api/documents/${id}
+  // Backend handles deleting file from storage and DB record.
   try {
-    // In development mode, update mock data
-    if (import.meta.env.DEV) {
-      const initialLength = mockDocuments.length;
-      mockDocuments = mockDocuments.filter(doc => doc.id !== id);
-      return mockDocuments.length < initialLength;
-    }
-    
-    // In production, delete from Supabase
-    // First, get the document to find its path
-    const { data: document, error: fetchError } = await supabase
-      .from('documents')
-      .select('path')
-      .eq('id', id)
-      .single();
-  
-    if (fetchError) {
-      console.error('Error fetching document:', fetchError);
-      return false;
-    }
-  
-    // Delete the file from storage
-    const { error: storageError } = await supabase.storage
-      .from('documents')
-      .remove([document.path]);
-  
-    if (storageError) {
-      console.error('Error deleting file from storage:', storageError);
-      return false;
-    }
-  
-    // Delete the document record
-    const { error } = await supabase
-      .from('documents')
-      .delete()
-      .eq('id', id);
-  
-    if (error) {
-      console.error('Error deleting document record:', error);
-      return false;
-    }
-  
+    await request<void>(`/api/documents/${id}`, { method: 'DELETE' });
     return true;
   } catch (error) {
-    console.error('Error deleting document:', error);
+    console.error(`Error deleting document ${id} via API:`, error);
     return false;
   }
 };
@@ -251,20 +112,24 @@ export const deleteDocument = async (id: string): Promise<boolean> => {
 export const updateDocument = async (
   id: string,
   updates: DocumentUpdate
-): Promise<boolean> => {
-  const { error } = await supabase
-    .from('documents')
-    .update({
-      ...updates,
-      updated_at: new Date().toISOString(),
-      updated_by: supabase.auth.user()?.id
-    })
-    .eq('id', id);
-
-  if (error) {
-    console.error('Error updating document:', error);
-    return false;
+): Promise<Document | null> => {
+  // TODO: Define backend API: PATCH /api/documents/${id}
+  // Backend handles updatedBy, updatedAt.
+  try {
+    const data = await request<any>(`/api/documents/${id}`, { // Replace any with BackendDocument
+      method: 'PATCH',
+      body: updates,
+    });
+    return mapToFrontendDocument(data);
+  } catch (error) {
+    console.error(`Error updating document ${id} via API:`, error);
+    return null; // Or throw error
   }
-
-  return true;
 };
+
+// TODO: Consider if a getDocumentById(id: string) function is needed.
+// If so, it would call GET /api/documents/${id}
+
+// TODO: Consider if a function to get a download URL for a document is needed.
+// This might be part of the `Document` object (`path` could be a direct URL),
+// or a separate API call: GET /api/documents/${id}/download-url

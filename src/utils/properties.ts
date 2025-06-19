@@ -1,249 +1,156 @@
-import { supabase } from '../lib/supabase';
-import { Property, currencies } from '../types/property';
+import { request } from '../lib/apiClient';
+import { Property, Currency } from '../types/property'; // Assuming Currency is also exported from property types
 
-// Mock property data for development
-const mockProperties: Property[] = [
-  {
-    id: '3c6c8353-2122-4e63-b63b-c9bdcb6b94a3',
-    name: 'Courtyard Marriott',
-    location: 'New York, NY',
-    address: '123 Broadway, New York, NY 10001',
-    phone: '+1 (212) 555-1234',
-    email: 'info@courtyardny.com',
-    generalManager: 'Sarah Johnson',
-    type: 'Hotel',
-    rooms: 245,
-    currency: currencies[0], // USD
-    budgetUtilization: 68,
-    image: 'https://images.pexels.com/photos/261102/pexels-photo-261102.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=2'
-  },
-  {
-    id: 'f8d7a9e5-b8c2-4b3a-9f4e-d5c6b7a8f9e0',
-    name: 'Hilton Garden Inn',
-    location: 'Chicago, IL',
-    address: '456 Michigan Ave, Chicago, IL 60611',
-    phone: '+1 (312) 555-6789',
-    email: 'info@hiltongarden.com',
-    generalManager: 'Michael Chen',
-    type: 'Hotel',
-    rooms: 189,
-    currency: currencies[0], // USD
-    budgetUtilization: 75,
-    image: 'https://images.pexels.com/photos/258154/pexels-photo-258154.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=2'
-  },
-  {
-    id: 'a1b2c3d4-e5f6-4a5b-9c8d-7e6f5a4b3c2',
-    name: 'Sheraton Downtown',
-    location: 'Los Angeles, CA',
-    address: '789 Figueroa St, Los Angeles, CA 90017',
-    phone: '+1 (213) 555-4321',
-    email: 'info@sheratonla.com',
-    generalManager: 'Emily Parker',
-    type: 'Hotel',
-    rooms: 320,
-    currency: currencies[0], // USD
-    budgetUtilization: 42,
-    image: 'https://images.pexels.com/photos/1134176/pexels-photo-1134176.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=2'
-  },
-  {
-    id: 'd4c3b2a1-f6e5-4b5a-8d9c-7f6e5d4c3b2',
-    name: 'Westin Resort',
-    location: 'Miami, FL',
-    address: '321 Ocean Drive, Miami, FL 33139',
-    phone: '+1 (305) 555-8765',
-    email: 'info@westinmiami.com',
-    generalManager: 'David Wilson',
-    type: 'Resort',
-    rooms: 412,
-    currency: currencies[0], // USD
-    budgetUtilization: 89,
-    image: 'https://images.pexels.com/photos/338504/pexels-photo-338504.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=2'
-  },
-  {
-    id: 'e5d4c3b2-a1f6-4e5d-8c9b-7a6f5e4d3c2',
-    name: 'Hyatt Regency',
-    location: 'San Francisco, CA',
-    address: '567 Market St, San Francisco, CA 94105',
-    phone: '+1 (415) 555-2345',
-    email: 'info@hyattsf.com',
-    generalManager: 'Jennifer Lopez',
-    type: 'Hotel',
-    rooms: 275,
-    currency: currencies[0], // USD
-    budgetUtilization: 56,
-    image: 'https://images.pexels.com/photos/2034335/pexels-photo-2034335.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=2'
-  },
-  {
-    id: 'b5a4c3d2-e1f6-4a5b-9c8d-7e6f5a4b3c2',
-    name: 'Holiday Inn Express',
-    location: 'Boston, MA',
-    address: '890 Commonwealth Ave, Boston, MA 02215',
-    phone: '+1 (617) 555-9876',
-    email: 'info@holidayinnboston.com',
-    generalManager: 'Robert Brown',
-    type: 'Hotel',
-    rooms: 156,
-    currency: currencies[0], // USD
-    budgetUtilization: 32,
-    image: 'https://images.pexels.com/photos/1001965/pexels-photo-1001965.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=2'
+// Interface for the raw property data expected from the backend API
+// This should match the structure from the 'properties' table in schema.sql
+interface BackendPropertyData {
+  id: string;
+  name: string;
+  location: string;
+  address: string;
+  phone?: string | null;
+  email?: string | null;
+  general_manager?: string | null;
+  type: string;
+  rooms: number;
+  currency_code: string;
+  currency_symbol: string;
+  currency_name: string;
+  budget_utilization?: number | null;
+  image_url?: string | null;
+  created_at?: string; // Timestamps from backend
+  updated_at?: string;
+  created_by?: string; // User ID
+  updated_by?: string; // User ID
+}
+
+// Helper function to map backend data to frontend Property type
+const mapToFrontendProperty = (bp: BackendPropertyData): Property => {
+  return {
+    id: bp.id,
+    name: bp.name,
+    location: bp.location,
+    address: bp.address,
+    phone: bp.phone || '',
+    email: bp.email || '',
+    generalManager: bp.general_manager || '',
+    type: bp.type,
+    rooms: bp.rooms,
+    currency: { // Assuming Property type has a nested currency object
+      code: bp.currency_code,
+      symbol: bp.currency_symbol,
+      name: bp.currency_name,
+    },
+    budgetUtilization: bp.budget_utilization || 0,
+    image: bp.image_url || '', // Provide a default or ensure it's always there
+    // Frontend Property type might not have created_at, created_by etc.
+    // Add them if they are part of the frontend type and needed.
+  };
+};
+
+// Helper function to map frontend Property (for create/update) to backend payload
+const mapToBackendPayload = (property: Partial<Omit<Property, 'id' | 'budgetUtilization'>>) => {
+  const payload: any = { ...property };
+  if (property.currency) {
+    payload.currency_code = property.currency.code;
+    payload.currency_symbol = property.currency.symbol;
+    payload.currency_name = property.currency.name;
+    delete payload.currency; // Remove the nested object
   }
-];
+  if (property.generalManager) {
+    payload.general_manager = property.generalManager;
+    delete payload.generalManager;
+  }
+   if (property.image) {
+    payload.image_url = property.image;
+    // delete payload.image; // Only delete if 'image' is not a valid backend fieldname
+  }
+  // Remove fields not directly on the backend 'properties' table or handled otherwise (like id, budgetUtilization)
+  // delete payload.id; // ID is not part of create payload, and usually not updatable directly for PATCH
+  // delete payload.budgetUtilization; // Usually calculated or updated via other means
+  return payload;
+};
+
 
 /**
- * Load properties from Supabase
+ * Load properties from the backend API
  */
 export const loadProperties = async (): Promise<Property[]> => {
+  // TODO: Define backend API endpoint: GET /api/properties
   try {
-    // In development mode, return mock data
-    if (import.meta.env.DEV) {
-      return mockProperties;
-    }
-
-    // In production, fetch from Supabase
-    const { data, error } = await supabase
-      .from('properties')
-      .select('*');
-
-    if (error) {
-      console.error('Error loading properties:', error);
-      return [];
-    }
-
-    return data.map(row => ({
-      id: row.id,
-      name: row.name,
-      location: row.location,
-      address: row.address,
-      phone: row.phone || '',
-      email: row.email || '',
-      generalManager: row.general_manager || '',
-      type: row.type,
-      rooms: row.rooms,
-      currency: {
-        code: row.currency_code,
-        symbol: row.currency_symbol,
-        name: row.currency_name
-      },
-      budgetUtilization: row.budget_utilization || 0,
-      image: row.image_url || 'https://images.pexels.com/photos/261102/pexels-photo-261102.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=2'
-    }));
+    const data = await request<BackendPropertyData[]>('/api/properties', { method: 'GET' });
+    return data.map(mapToFrontendProperty);
   } catch (error) {
-    console.error('Error loading properties:', error);
+    console.error('Error loading properties via API:', error);
     return [];
   }
 };
 
 /**
- * Get a property by ID
+ * Get a property by ID from the backend API
  */
 export const getPropertyById = async (id: string): Promise<Property | null> => {
+  // TODO: Define backend API endpoint: GET /api/properties/:id
   try {
-    // In development mode, return mock data
-    if (import.meta.env.DEV) {
-      const property = mockProperties.find(p => p.id === id);
-      return property || null;
-    }
-
-    // In production, fetch from Supabase
-    const { data, error } = await supabase
-      .from('properties')
-      .select('*')
-      .eq('id', id)
-      .single();
-
-    if (error) {
-      console.error('Error getting property:', error);
-      return null;
-    }
-
-    return {
-      id: data.id,
-      name: data.name,
-      location: data.location,
-      address: data.address,
-      phone: data.phone || '',
-      email: data.email || '',
-      generalManager: data.general_manager || '',
-      type: data.type,
-      rooms: data.rooms,
-      currency: {
-        code: data.currency_code,
-        symbol: data.currency_symbol,
-        name: data.currency_name
-      },
-      budgetUtilization: data.budget_utilization || 0,
-      image: data.image_url || 'https://images.pexels.com/photos/261102/pexels-photo-261102.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=2'
-    };
-  } catch (error) {
-    console.error('Error getting property:', error);
-    return null;
+    const data = await request<BackendPropertyData>(`/api/properties/${id}`, { method: 'GET' });
+    return data ? mapToFrontendProperty(data) : null;
+  } catch (error: any) {
+    if (error.status === 404) return null;
+    console.error(`Error getting property ${id} via API:`, error);
+    return null; // Or throw error
   }
 };
 
 /**
- * Save a new property
- * In development mode, adds to mockProperties array
- * In production, saves to Supabase
+ * Save (create) a new property via the backend API
  */
-export const saveProperty = async (property: Omit<Property, 'id'>): Promise<Property | null> => {
-  // In development mode, create a mock property
-  if (import.meta.env.DEV) {
-    const newProperty: Property = {
-      ...property,
-      id: crypto.randomUUID(),
-      budgetUtilization: 0
-    };
-    
-    mockProperties.push(newProperty);
-    return newProperty;
-  }
-
-  // In production, save to Supabase
+export const saveProperty = async (propertyData: Omit<Property, 'id' | 'budgetUtilization'>): Promise<Property | null> => {
+  // TODO: Define backend API endpoint: POST /api/properties
+  // Backend will set id, created_at, created_by (from JWT), budgetUtilization (default or calculated)
   try {
-    const { data, error } = await supabase
-      .from('properties')
-      .insert([{
-        name: property.name,
-        location: property.location,
-        address: property.address,
-        phone: property.phone,
-        email: property.email,
-        general_manager: property.generalManager,
-        type: property.type,
-        rooms: property.rooms,
-        currency_code: property.currency.code,
-        currency_symbol: property.currency.symbol,
-        currency_name: property.currency.name,
-        image_url: property.image
-      }])
-      .select()
-      .single();
-
-    if (error) {
-      console.error('Error saving property:', error);
-      return null;
-    }
-
-    return {
-      id: data.id,
-      name: data.name,
-      location: data.location,
-      address: data.address,
-      phone: data.phone || '',
-      email: data.email || '',
-      generalManager: data.general_manager || '',
-      type: data.type,
-      rooms: data.rooms,
-      currency: {
-        code: data.currency_code,
-        symbol: data.currency_symbol,
-        name: data.currency_name
-      },
-      budgetUtilization: data.budget_utilization || 0,
-      image: data.image_url || ''
-    };
+    const payload = mapToBackendPayload(propertyData);
+    const data = await request<BackendPropertyData>('/api/properties', {
+      method: 'POST',
+      body: payload,
+    });
+    return data ? mapToFrontendProperty(data) : null;
   } catch (error) {
-    console.error('Error saving property:', error);
-    return null;
+    console.error('Error saving property via API:', error);
+    return null; // Or throw error
+  }
+};
+
+/**
+ * Update an existing property via the backend API
+ * (This function was not in the original properties.ts, adding it for completeness if needed)
+ */
+export const updateProperty = async (id: string, propertyData: Partial<Omit<Property, 'id' | 'budgetUtilization'>>): Promise<Property | null> => {
+  // TODO: Define backend API endpoint: PATCH /api/properties/:id
+  // Backend will set updated_at, updated_by (from JWT)
+  try {
+    const payload = mapToBackendPayload(propertyData);
+    const data = await request<BackendPropertyData>(`/api/properties/${id}`, {
+      method: 'PATCH',
+      body: payload,
+    });
+    return data ? mapToFrontendProperty(data) : null;
+  } catch (error) {
+    console.error(`Error updating property ${id} via API:`, error);
+    return null; // Or throw error
+  }
+};
+
+/**
+ * Delete a property by ID via the backend API
+ * (This function was not in the original properties.ts, adding it for completeness if needed)
+ */
+export const deleteProperty = async (id: string): Promise<boolean> => {
+  // TODO: Define backend API endpoint: DELETE /api/properties/:id
+  try {
+    await request<void>(`/api/properties/${id}`, { method: 'DELETE' });
+    return true;
+  } catch (error) {
+    console.error(`Error deleting property ${id} via API:`, error);
+    return false;
   }
 };

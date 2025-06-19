@@ -1,450 +1,195 @@
-import { supabase } from '../lib/supabase';
+import { request } from '../lib/apiClient';
 
 export interface QuickAction {
   id: string;
   title: string;
   description: string;
   icon: string;
-  bgColor: string;
+  bgColor: string; // Consider if these style props should remain or be handled by UI components
   iconColor: string;
   url?: string;
+  display_order?: number; // from schema
 }
 
 export interface Article {
   id: string;
   title: string;
-  category: string;
-  readTime: string;
+  category: string; // This might become categoryId if normalized
+  categoryId?: string; // from schema help_articles.category_id
+  readTime: string | number; // Store as number (minutes), format in UI
   content?: string;
   views: number;
+  featured?: boolean; // from schema
   createdAt: string;
-  updatedAt: string;
+  updatedAt?: string;
+  // createdBy, updatedBy if needed
 }
 
 export interface HelpCategory {
   id: string;
   title: string;
   icon: string;
-  articles: Article[];
+  description?: string; // from schema
+  articles?: Article[]; // If fetched nested
+  display_order?: number; // from schema
 }
 
-export interface Update {
+export interface Update { // Corresponds to help_updates table
   id: string;
   title: string;
   description: string;
-  type: 'feature' | 'maintenance' | 'announcement';
-  date: string;
+  type: 'feature' | 'maintenance' | 'announcement' | 'improvement' | 'fix'; // Align with schema
+  publish_date?: string; // from schema
+  createdAt?: string; // from schema (created_at)
+  // createdBy, updatedBy if needed
 }
 
-/**
- * Load quick actions for the help center
- */
+// --- Mapping Functions ---
+const mapToFrontendQuickAction = (data: any): QuickAction => ({
+  id: data.id,
+  title: data.title,
+  description: data.description,
+  icon: data.icon,
+  bgColor: data.bg_color,
+  iconColor: data.icon_color,
+  url: data.url,
+  display_order: data.display_order,
+});
+
+const mapToFrontendArticle = (data: any): Article => ({
+  id: data.id,
+  title: data.title,
+  category: data.category_id, // Assuming we'll use category ID and fetch category title if needed
+  categoryId: data.category_id,
+  readTime: data.read_time || 5, // Default read time
+  content: data.content,
+  views: data.views || 0,
+  featured: data.featured,
+  createdAt: data.created_at,
+  updatedAt: data.updated_at,
+});
+
+const mapToFrontendHelpCategory = (data: any, articles: Article[] = []): HelpCategory => ({
+  id: data.id,
+  title: data.title,
+  icon: data.icon,
+  description: data.description,
+  articles: articles,
+  display_order: data.display_order,
+});
+
+const mapToFrontendUpdate = (data: any): Update => ({
+  id: data.id,
+  title: data.title,
+  description: data.description,
+  type: data.type as Update['type'],
+  publish_date: data.publish_date,
+  createdAt: data.created_at,
+});
+
+
+// --- API Functions ---
+
 export const loadQuickActions = async (): Promise<QuickAction[]> => {
-  // In development mode, return mock data
-  if (import.meta.env.DEV) {
-    return [
-      {
-        id: 'submit',
-        title: 'Submit a Ticket',
-        description: 'Get help from our support team',
-        icon: 'MessageSquare',
-        bgColor: 'bg-green-50',
-        iconColor: 'text-green-600',
-        url: '/help/submit-ticket'
-      },
-      {
-        id: 'tutorials',
-        title: 'View Tutorials',
-        description: 'Learn through video guides',
-        icon: 'Play',
-        bgColor: 'bg-orange-50',
-        iconColor: 'text-orange-600',
-        url: '/help/tutorials'
-      },
-      {
-        id: 'support',
-        title: 'Contact Support',
-        description: '24/7 support available',
-        icon: 'HelpCircle',
-        bgColor: 'bg-yellow-50',
-        iconColor: 'text-yellow-600',
-        url: '/help/contact'
-      },
-      {
-        id: 'docs',
-        title: 'Documentation',
-        description: 'Read detailed guides',
-        icon: 'Book',
-        bgColor: 'bg-blue-50',
-        iconColor: 'text-blue-600',
-        url: '/help/documentation'
-      }
-    ];
-  }
-
-  // In production, fetch from Supabase
-  const { data, error } = await supabase
-    .from('help_quick_actions')
-    .select('*')
-    .order('display_order');
-
-  if (error) {
+  // TODO: Backend API: GET /api/help/quick-actions (ordered by display_order)
+  try {
+    const data = await request<any[]>('/api/help/quick-actions', { method: 'GET' });
+    return data.map(mapToFrontendQuickAction);
+  } catch (error) {
     console.error('Error loading quick actions:', error);
     return [];
   }
-
-  return data.map(item => ({
-    id: item.id,
-    title: item.title,
-    description: item.description,
-    icon: item.icon,
-    bgColor: item.bg_color,
-    iconColor: item.icon_color,
-    url: item.url
-  }));
 };
 
-/**
- * Load featured articles for the help center
- */
 export const loadFeaturedArticles = async (): Promise<Article[]> => {
-  // In development mode, return mock data
-  if (import.meta.env.DEV) {
-    return [
-      {
-        id: '1',
-        title: 'Getting Started with Zepth Edge',
-        category: 'Basics',
-        readTime: '5 min read',
-        views: 1234,
-        createdAt: '2025-01-01T00:00:00Z',
-        updatedAt: '2025-01-01T00:00:00Z'
-      },
-      {
-        id: '2',
-        title: 'Managing Property Documents',
-        category: 'Documents',
-        readTime: '8 min read',
-        views: 987,
-        createdAt: '2025-01-02T00:00:00Z',
-        updatedAt: '2025-01-02T00:00:00Z'
-      },
-      {
-        id: '3',
-        title: 'Budget Approval Workflow',
-        category: 'Finance',
-        readTime: '6 min read',
-        views: 765,
-        createdAt: '2025-01-03T00:00:00Z',
-        updatedAt: '2025-01-03T00:00:00Z'
-      },
-      {
-        id: '4',
-        title: 'Asset Disposal Guide',
-        category: 'Operations',
-        readTime: '7 min read',
-        views: 543,
-        createdAt: '2025-01-04T00:00:00Z',
-        updatedAt: '2025-01-04T00:00:00Z'
-      }
-    ];
-  }
-
-  // In production, fetch from Supabase
-  const { data, error } = await supabase
-    .from('help_articles')
-    .select('*')
-    .eq('featured', true)
-    .order('views', { ascending: false })
-    .limit(4);
-
-  if (error) {
+  // TODO: Backend API: GET /api/help/articles?featured=true&limit=4&orderBy=views:desc
+  try {
+    const data = await request<any[]>('/api/help/articles?featured=true&limit=4&orderBy=views:desc', { method: 'GET' });
+    return data.map(mapToFrontendArticle);
+  } catch (error) {
     console.error('Error loading featured articles:', error);
     return [];
   }
-
-  return data.map(item => ({
-    id: item.id,
-    title: item.title,
-    category: item.category,
-    readTime: `${item.read_time} min read`,
-    views: item.views,
-    createdAt: item.created_at,
-    updatedAt: item.updated_at
-  }));
 };
 
-/**
- * Load help categories with their articles
- */
 export const loadHelpCategories = async (): Promise<HelpCategory[]> => {
-  // In development mode, return mock data
-  if (import.meta.env.DEV) {
-    return [
-      {
-        id: 'getting-started',
-        title: 'Getting Started',
-        icon: 'Book',
-        articles: [
-          { id: '1', title: 'Platform Overview', views: 1234, category: 'Basics', readTime: '5 min read', createdAt: '2025-01-01T00:00:00Z', updatedAt: '2025-01-01T00:00:00Z' },
-          { id: '2', title: 'User Roles & Permissions', views: 856, category: 'Basics', readTime: '4 min read', createdAt: '2025-01-01T00:00:00Z', updatedAt: '2025-01-01T00:00:00Z' },
-          { id: '3', title: 'Navigation Guide', views: 654, category: 'Basics', readTime: '3 min read', createdAt: '2025-01-01T00:00:00Z', updatedAt: '2025-01-01T00:00:00Z' }
-        ]
-      },
-      {
-        id: 'property-management',
-        title: 'Property Management',
-        icon: 'FileText',
-        articles: [
-          { id: '4', title: 'Adding a New Property', views: 987, category: 'Properties', readTime: '6 min read', createdAt: '2025-01-01T00:00:00Z', updatedAt: '2025-01-01T00:00:00Z' },
-          { id: '5', title: 'Budget Management', views: 765, category: 'Finance', readTime: '7 min read', createdAt: '2025-01-01T00:00:00Z', updatedAt: '2025-01-01T00:00:00Z' },
-          { id: '6', title: 'Document Collaboration', views: 543, category: 'Documents', readTime: '5 min read', createdAt: '2025-01-01T00:00:00Z', updatedAt: '2025-01-01T00:00:00Z' }
-        ]
-      }
-    ];
-  }
-
-  // In production, fetch from Supabase
-  const { data: categories, error: categoriesError } = await supabase
-    .from('help_categories')
-    .select('*')
-    .order('display_order');
-
-  if (categoriesError) {
-    console.error('Error loading help categories:', categoriesError);
+  // TODO: Backend API: GET /api/help/categories-with-articles?articleLimit=3 (or similar for nested data)
+  // This is complex. Option 1: Backend sends nested data. Option 2: N+1 frontend calls (bad).
+  // Assuming Option 1 for now.
+  try {
+    const data = await request<any[]>('/api/help/categories-with-articles?articleLimit=3', { method: 'GET' });
+    return data.map(categoryData => mapToFrontendHelpCategory(
+      categoryData,
+      (categoryData.articles || []).map(mapToFrontendArticle)
+    ));
+  } catch (error) {
+    console.error('Error loading help categories with articles:', error);
     return [];
   }
-
-  // Fetch articles for each category
-  const result: HelpCategory[] = [];
-  
-  for (const category of categories) {
-    const { data: articles, error: articlesError } = await supabase
-      .from('help_articles')
-      .select('*')
-      .eq('category_id', category.id)
-      .order('views', { ascending: false })
-      .limit(3);
-    
-    if (articlesError) {
-      console.error(`Error loading articles for category ${category.id}:`, articlesError);
-      continue;
-    }
-    
-    result.push({
-      id: category.id,
-      title: category.title,
-      icon: category.icon,
-      articles: articles.map(article => ({
-        id: article.id,
-        title: article.title,
-        category: article.category,
-        readTime: `${article.read_time} min read`,
-        views: article.views,
-        createdAt: article.created_at,
-        updatedAt: article.updated_at
-      }))
-    });
-  }
-
-  return result;
 };
 
-/**
- * Load recent updates for the help center
- */
 export const loadRecentUpdates = async (): Promise<Update[]> => {
-  // In development mode, return mock data
-  if (import.meta.env.DEV) {
-    return [
-      {
-        id: '1',
-        title: 'New Feature: Document Hub',
-        description: 'Explore our new document collaboration features in the latest update.',
-        type: 'feature',
-        date: '2025-04-15'
-      },
-      {
-        id: '2',
-        title: 'System Maintenance',
-        description: 'Scheduled maintenance on April 20, 2025, from 2 AM to 4 AM EST.',
-        type: 'maintenance',
-        date: '2025-04-10'
-      }
-    ];
-  }
-
-  // In production, fetch from Supabase
-  const { data, error } = await supabase
-    .from('help_updates')
-    .select('*')
-    .order('created_at', { ascending: false })
-    .limit(3);
-
-  if (error) {
+  // TODO: Backend API: GET /api/help/updates?limit=3&orderBy=created_at:desc
+  try {
+    const data = await request<any[]>('/api/help/updates?limit=3&orderBy=publish_date:desc', { method: 'GET' });
+    return data.map(mapToFrontendUpdate);
+  } catch (error) {
     console.error('Error loading recent updates:', error);
     return [];
   }
-
-  return data.map(item => ({
-    id: item.id,
-    title: item.title,
-    description: item.description,
-    type: item.type,
-    date: new Date(item.created_at).toLocaleDateString()
-  }));
 };
 
-/**
- * Get article by ID
- */
 export const getArticleById = async (id: string): Promise<Article | null> => {
-  // In development mode, return mock data
-  if (import.meta.env.DEV) {
-    const mockArticles = [
-      {
-        id: '1',
-        title: 'Getting Started with Zepth Edge',
-        category: 'Basics',
-        readTime: '5 min read',
-        content: 'This is a detailed guide on how to get started with Zepth Edge...',
-        views: 1234,
-        createdAt: '2025-01-01T00:00:00Z',
-        updatedAt: '2025-01-01T00:00:00Z'
-      },
-      {
-        id: '2',
-        title: 'Managing Property Documents',
-        category: 'Documents',
-        readTime: '8 min read',
-        content: 'Learn how to effectively manage property documents in Zepth Edge...',
-        views: 987,
-        createdAt: '2025-01-02T00:00:00Z',
-        updatedAt: '2025-01-02T00:00:00Z'
-      }
-    ];
-    
-    return mockArticles.find(article => article.id === id) || null;
-  }
-
-  // In production, fetch from Supabase
-  const { data, error } = await supabase
-    .from('help_articles')
-    .select('*')
-    .eq('id', id)
-    .single();
-
-  if (error) {
-    console.error('Error loading article:', error);
+  // TODO: Backend API: GET /api/help/articles/:id
+  // The backend should handle incrementing view count.
+  try {
+    const data = await request<any>(`/api/help/articles/${id}`, { method: 'GET' });
+    return data ? mapToFrontendArticle(data) : null;
+  } catch (error: any) {
+    if (error.status === 404) return null;
+    console.error(`Error loading article ${id}:`, error);
     return null;
   }
-
-  // Increment view count
-  await supabase
-    .from('help_articles')
-    .update({ views: data.views + 1 })
-    .eq('id', id);
-
-  return {
-    id: data.id,
-    title: data.title,
-    category: data.category,
-    readTime: `${data.read_time} min read`,
-    content: data.content,
-    views: data.views,
-    createdAt: data.created_at,
-    updatedAt: data.updated_at
-  };
 };
 
-/**
- * Search articles
- */
 export const searchArticles = async (query: string): Promise<Article[]> => {
+  // TODO: Backend API: GET /api/help/articles/search?q=<query>
   if (!query.trim()) return [];
-
-  // In development mode, return mock data
-  if (import.meta.env.DEV) {
-    const mockArticles = [
-      {
-        id: '1',
-        title: 'Getting Started with Zepth Edge',
-        category: 'Basics',
-        readTime: '5 min read',
-        views: 1234,
-        createdAt: '2025-01-01T00:00:00Z',
-        updatedAt: '2025-01-01T00:00:00Z'
-      },
-      {
-        id: '2',
-        title: 'Managing Property Documents',
-        category: 'Documents',
-        readTime: '8 min read',
-        views: 987,
-        createdAt: '2025-01-02T00:00:00Z',
-        updatedAt: '2025-01-02T00:00:00Z'
-      }
-    ];
-    
-    return mockArticles.filter(article => 
-      article.title.toLowerCase().includes(query.toLowerCase()) ||
-      article.category.toLowerCase().includes(query.toLowerCase())
-    );
-  }
-
-  // In production, fetch from Supabase
-  const { data, error } = await supabase
-    .from('help_articles')
-    .select('*')
-    .or(`title.ilike.%${query}%,content.ilike.%${query}%,category.ilike.%${query}%`)
-    .order('views', { ascending: false });
-
-  if (error) {
+  try {
+    const data = await request<any[]>(`/api/help/articles/search?q=${encodeURIComponent(query)}`, { method: 'GET' });
+    return data.map(mapToFrontendArticle);
+  } catch (error) {
     console.error('Error searching articles:', error);
     return [];
   }
-
-  return data.map(item => ({
-    id: item.id,
-    title: item.title,
-    category: item.category,
-    readTime: `${item.read_time} min read`,
-    views: item.views,
-    createdAt: item.created_at,
-    updatedAt: item.updated_at
-  }));
 };
 
-/**
- * Submit a support ticket
- */
 export const submitSupportTicket = async (
   email: string,
   subject: string,
   message: string,
-  category: string
+  category: string,
+  // Frontend might also send userId if user is authenticated
+  userId?: string
 ): Promise<boolean> => {
-  // In development mode, return success
-  if (import.meta.env.DEV) {
-    console.log('Support ticket submitted:', { email, subject, message, category });
+  // TODO: Backend API: POST /api/support-tickets
+  // Backend will set status to 'open', created_at. created_by if userId is passed.
+  try {
+    const payload = { email, subject, message, category, userId, status: 'open' };
+    await request<any>('/api/support-tickets', {
+      method: 'POST',
+      body: payload,
+    });
     return true;
-  }
-
-  // In production, submit to Supabase
-  const { error } = await supabase
-    .from('support_tickets')
-    .insert([{
-      email,
-      subject,
-      message,
-      category,
-      status: 'open'
-    }]);
-
-  if (error) {
+  } catch (error) {
     console.error('Error submitting support ticket:', error);
     return false;
   }
-
-  return true;
 };
+
+// TODO: Add admin functions if needed:
+// - createQuickAction, updateQuickAction, deleteQuickAction
+// - createArticle, updateArticle, deleteArticle
+// - createHelpCategory, updateHelpCategory, deleteHelpCategory
+// - createHelpUpdate, updateHelpUpdate, deleteHelpUpdate
+// - getSupportTickets, getSupportTicketById, updateSupportTicketStatus, assignSupportTicket

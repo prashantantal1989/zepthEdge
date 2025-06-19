@@ -67,7 +67,11 @@ const BudgetDetail = () => {
         
         setDocuments(budgetDocs.map(doc => ({
           name: doc.name,
-          url: `${supabase.storage.from('documents').getPublicUrl(doc.path).data.publicUrl}`,
+          // Assuming doc.path from loadDocuments (now API-driven) will be the direct public URL
+          // or a new field like doc.publicUrl will be provided by the API.
+          // TODO: Adjust if the API returns a path that needs further processing
+          // via a new utility function e.g. getPublicUrl(doc.path) which calls a backend helper.
+          url: doc.path, // Or doc.publicUrl if the API provides that
           size: formatFileSize(doc.size)
         })));
         

@@ -124,13 +124,12 @@ const AssetDisposalNew = () => {
         
         if (workflowId) {
           // Update the asset disposal with the workflow ID
-          await supabase
-            .from('asset_disposals')
-            .update({ 
-              workflow_id: workflowId,
-              status: 'pending'
-            })
-            .eq('id', newDisposal.id);
+        if (workflowId && newDisposal) {
+          // Update the asset disposal with the workflow ID and set status to pending
+          await updateAssetDisposal(newDisposal.id, {
+            workflowId: workflowId, // Ensure AssetDisposalUpdate and backend accept workflowId
+            status: 'pending_approval' // Align with schema status; AssetDisposalStatus type
+          });
         }
       }
       
